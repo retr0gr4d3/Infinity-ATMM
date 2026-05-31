@@ -20,3 +20,4 @@ using System.Runtime.InteropServices;
 
 [assembly: MelonInfo(typeof(TestMod), "Alpha Testing Mod Menu", "0.0.1", "Retr0gr4d3")]
 [assembly: MelonGame("Artix Entertainment, LLC", "AdventureQuest Worlds: Infinity")]
+[assembly: MelonGame("Artix Entertainment, LLC", "AdventureQuest Worlds Infinity")]
