@@ -10,7 +10,7 @@ namespace Infinity_TestMod
     public class TestMod : MelonMod
     {
         public static bool showWindow = false;
-        public static Rect windowRect = new(20, 100, 300, 590);
+        public static Rect windowRect = new(20, 100, 300, 610);
         public static readonly Rect ToggleButtonRect = new(10, 20, 64, 64);
 
         public static bool forceMergeShop = false;
@@ -19,7 +19,19 @@ namespace Infinity_TestMod
 
         public static bool autoskillsActive = false;
         public static bool showConfigWindow = false;
-        public static Rect configWindowRect = new(330, 100, 320, 300);
+        public static Rect configWindowRect = new(330, 100, 320, 360);
+
+        public static bool showFakeDevWindow = false;
+        public static Rect fakeDevWindowRect = new(330, 410, 320, 270);
+        private static bool defaultsCaptured = false;
+        private static int defaultUpgradeDays = 0;
+        private static int defaultAccessLevel = 0;
+
+        public static bool showShopLoaderWindow = false;
+        public static Rect shopLoaderWindowRect = new(330, 100, 280, 205);
+
+        public static bool showQuestLoaderWindow = false;
+        public static Rect questLoaderWindowRect = new(330, 315, 280, 205);
 
         public static bool showInterceptorWindow = false;
         public static Rect interceptorWindowRect = new(660, 100, 500, 365);
@@ -36,14 +48,14 @@ namespace Infinity_TestMod
 
         // Packet Receiver: inject server→client packets locally.
         public static bool showReceiverWindow = false;
-        public static Rect receiverWindowRect = new(660, 1040, 500, 290);
+        public static Rect receiverWindowRect = new(660, 1040, 500, 315);
 
         // QuestRunner: end-to-end automation. Single instance, ticked from
         // OnUpdate so all game-side calls (target setting, request sends)
         // stay on the Unity main thread.
         public static QuestRunner questRunner = new QuestRunner();
         public static bool showQuestRunnerWindow = false;
-        public static Rect questRunnerWindowRect = new(20, 660, 640, 405);
+        public static Rect questRunnerWindowRect = new(20, 660, 640, 480);
         private static string questRunnerIdInput = "1";
         private static string questRunnerItersInput = "10";
         // Optional cell-hop before hunting. Empty Frame = no hop (stay where you are).
@@ -237,9 +249,9 @@ namespace Infinity_TestMod
                 buttonBgTexture = CreateThemedButtonBgTexture(defaultBorder);
                 buttonBgHoverTexture = CreateThemedButtonBgTexture(hoverBorder);
 
-                separatorTexture = new Texture2D(1, 1);
-                separatorTexture.SetPixel(0, 0, new Color(0.2f, 0.2f, 0.2f, 1f));
-                separatorTexture.Apply();
+                 separatorTexture = new Texture2D(1, 1);
+                 separatorTexture.SetPixel(0, 0, new Color(0.08f, 0.08f, 0.08f, 1f));
+                 separatorTexture.Apply();
 
                 LoggerInstance.Msg("Generated UI textures.");
             }
@@ -422,6 +434,42 @@ namespace Infinity_TestMod
                 }
             }
 
+            if (showWindow && showFakeDevWindow)
+            {
+                if (windowStyle != null)
+                {
+                    fakeDevWindowRect = GUI.Window(9992, fakeDevWindowRect, DrawFakeDevWindow, "FakeDev Settings", windowStyle);
+                }
+                else
+                {
+                    fakeDevWindowRect = GUI.Window(9992, fakeDevWindowRect, DrawFakeDevWindow, "FakeDev Settings");
+                }
+            }
+
+            if (showWindow && showShopLoaderWindow)
+            {
+                if (windowStyle != null)
+                {
+                    shopLoaderWindowRect = GUI.Window(9991, shopLoaderWindowRect, DrawShopLoaderWindow, "Shop Loader", windowStyle);
+                }
+                else
+                {
+                    shopLoaderWindowRect = GUI.Window(9991, shopLoaderWindowRect, DrawShopLoaderWindow, "Shop Loader");
+                }
+            }
+
+            if (showWindow && showQuestLoaderWindow)
+            {
+                if (windowStyle != null)
+                {
+                    questLoaderWindowRect = GUI.Window(9990, questLoaderWindowRect, DrawQuestLoaderWindow, "Quest Loader", windowStyle);
+                }
+                else
+                {
+                    questLoaderWindowRect = GUI.Window(9990, questLoaderWindowRect, DrawQuestLoaderWindow, "Quest Loader");
+                }
+            }
+
             if (showWindow && showQuestRunnerWindow)
             {
                 if (windowStyle != null)
@@ -443,7 +491,17 @@ namespace Infinity_TestMod
             int currentLevel = -1;
             try
             {
-                if (Entity.mainPlayer != null) currentLevel = Entity.mainPlayer.AccessLevel;
+                if (Entity.mainPlayer != null)
+                {
+                    currentLevel = Entity.mainPlayer.AccessLevel;
+                    if (!defaultsCaptured)
+                    {
+                        defaultUpgradeDays = Entity.mainPlayer.UpgradeDays;
+                        defaultAccessLevel = Entity.mainPlayer.AccessLevel;
+                        defaultsCaptured = true;
+                        LoggerInstance.Msg($"Captured player default privileges: UpgradeDays={defaultUpgradeDays}, AccessLevel={defaultAccessLevel}");
+                    }
+                }
             }
             catch (System.Exception ex)
             {
@@ -453,227 +511,75 @@ namespace Infinity_TestMod
             bool playerExists = false;
             try { playerExists = (Entity.mainPlayer != null); } catch { }
 
-            // Tier buttons. These match the real tiers gated in the game's
-            // hasAccess(N) checks across the decomp + the colors mapped in
-            // Util.GetAccessLevelColor. Purely client-side — server still
-            // enforces real privileges per command.
-            //
-            //   AL=30  Teal     — basic dev (DevCommand, DevWindow, charItem)
-            //   AL=40  Lime     — mod (clearAction, questReset, chat /dialog)
-            //   AL=50  Purple   — admin (shares color with 100; +InitPlayer extras)
-            //   AL=60  Gold     — senior admin (Avatar, Machine cmds)
-            //   AL=100 Purple   — full dev (requestKillMap and everything below)
-            //
-            // Membership is a SEPARATE field (UpgradeDays > 0), not an
-            // AccessLevel — gets its own toggle below.
-            // Membership toggle on the left of the row, then 5 tier buttons.
-            // Member = UpgradeDays > 0 (separate from AccessLevel). Active
-            // state for any of these prefixes the label with ▶ so the user
-            // can see current state without a separate readout.
-            bool isMember = false;
-            try { if (Entity.mainPlayer != null) isMember = Entity.mainPlayer.UpgradeDays > 0; } catch { }
-            string memLabel = isMember ? "▶ Mem" : "Mem";
+            float curY = 70f;
+
+            // Section 1: FakeDev
+            GUI.Label(new Rect(20, curY, 260, 20), "<b>FakeDev</b>", labelStyle);
+            curY += 22f;
+
+            string fakeDevBtnText = showFakeDevWindow ? "Hide FakeDev" : "FakeDev Settings";
             if (playerExists)
             {
-                if (GUI.Button(new Rect(20, 70, 50, 35), memLabel, closeButtonStyle))
+                if (GUI.Button(new Rect(20, curY, 260, 35), fakeDevBtnText, closeButtonStyle))
                 {
-                    try
-                    {
-                        Entity.mainPlayer.UpgradeDays = isMember ? 0 : 30;
-                        // Same nameplate-refresh issue as AccessLevel — though
-                        // Player.updateNameColor() doesn't actually pass the
-                        // upgraded=true branch to Util.GetAccessLevelColor, so
-                        // your OWN nameplate may not visibly tint blue even
-                        // after this. Party UI (UIPartyMemberSlot) does honor
-                        // the upgraded flag, so members in your party should
-                        // recolor correctly.
-                        Entity.mainPlayer.updateNameColor();
-                        LoggerInstance.Msg($"Set client UpgradeDays to {Entity.mainPlayer.UpgradeDays} (member={!isMember}).");
-                    }
-                    catch (System.Exception ex)
-                    {
-                        LoggerInstance.Error($"Error toggling membership: {ex}");
-                    }
+                    showFakeDevWindow = !showFakeDevWindow;
                 }
             }
             else
             {
                 GUI.enabled = false;
-                GUI.Button(new Rect(20, 70, 50, 35), memLabel, closeButtonStyle);
+                GUI.Button(new Rect(20, curY, 260, 35), "FakeDev (No Player)", closeButtonStyle);
                 GUI.enabled = true;
             }
-
-            DrawAccessTier(73,  30, "30",  30,  currentLevel, playerExists);
-            DrawAccessTier(106, 30, "40",  40,  currentLevel, playerExists);
-            DrawAccessTier(139, 30, "50",  50,  currentLevel, playerExists);
-            DrawAccessTier(172, 30, "60",  60,  currentLevel, playerExists);
-            DrawAccessTier(205, 30, "100", 100, currentLevel, playerExists);
-
-            if (playerExists)
-            {
-                if (GUI.Button(new Rect(238, 70, 42, 35), "Dev UI", closeButtonStyle))
-                {
-                    try
-                    {
-                        new DevWindow(new System.Collections.Generic.List<string>()).Execute();
-                        LoggerInstance.Msg("Opened dev window.");
-                    }
-                    catch (System.Exception ex)
-                    {
-                        LoggerInstance.Error($"Error executing DevWindow: {ex}");
-                    }
-                }
-            }
-            else
-            {
-                GUI.enabled = false;
-                GUI.Button(new Rect(238, 70, 42, 35), "Dev UI", closeButtonStyle);
-                GUI.enabled = true;
-            }
+            curY += 35f;
 
             if (separatorTexture != null)
             {
-                GUI.DrawTexture(new Rect(20, 111, 260, 2), separatorTexture);
-            }
-
-            GUI.Label(new Rect(150, 125, 130, 20), "Shop ID:", labelStyle);
-
-            if (playerExists)
-            {
-                if (GUI.Button(new Rect(20, 120, 120, 35), "Load Shop", closeButtonStyle))
-                {
-                    if (int.TryParse(shopIdInput, out int shopId))
-                    {
-                        try
-                        {
-                            AEC.Instance.sendRequest(new RequestLoadShop(shopId));
-                            LoggerInstance.Msg($"Requested load shop: {shopId}");
-                        }
-                        catch (System.Exception ex)
-                        {
-                            LoggerInstance.Error($"Error loading shop {shopId}: {ex}");
-                        }
-                    }
-                    else
-                    {
-                        LoggerInstance.Error($"Invalid shop ID input: '{shopIdInput}'");
-                    }
-                }
+                curY += 6f;
+                GUI.DrawTexture(new Rect(20, curY, 260, 2), separatorTexture);
+                curY += 2f + 6f;
             }
             else
             {
-                GUI.enabled = false;
-                GUI.Button(new Rect(20, 120, 120, 35), "Load Shop", closeButtonStyle);
-                GUI.enabled = true;
+                curY += 10f;
             }
 
-            shopIdInput = GUI.TextField(new Rect(150, 150, 130, 35), shopIdInput, textFieldStyle);
+            // Section 2: Loaders
+            GUI.Label(new Rect(20, curY, 260, 20), "<b>Loaders</b>", labelStyle);
+            curY += 22f;
 
-            if (playerExists)
+            string shopLoaderBtnText = showShopLoaderWindow ? "Hide Shop" : "Shop Loader";
+            if (GUI.Button(new Rect(20, curY, 125, 35), shopLoaderBtnText, closeButtonStyle))
             {
-                if (GUI.Button(new Rect(20, 160, 120, 35), "Load Merge", closeButtonStyle))
-                {
-                    if (int.TryParse(shopIdInput, out int shopId))
-                    {
-                        try
-                        {
-                            forceMergeShop = true;
-                            AEC.Instance.sendRequest(new RequestLoadShop(shopId));
-                            LoggerInstance.Msg($"Requested load merge shop: {shopId}");
-                        }
-                        catch (System.Exception ex)
-                        {
-                            forceMergeShop = false;
-                            LoggerInstance.Error($"Error loading merge shop {shopId}: {ex}");
-                        }
-                    }
-                    else
-                    {
-                        LoggerInstance.Error($"Invalid shop ID input: '{shopIdInput}'");
-                    }
-                }
+                showShopLoaderWindow = !showShopLoaderWindow;
             }
-            else
+
+            string questLoaderBtnText = showQuestLoaderWindow ? "Hide Quest" : "Quest Loader";
+            if (GUI.Button(new Rect(155, curY, 125, 35), questLoaderBtnText, closeButtonStyle))
             {
-                GUI.enabled = false;
-                GUI.Button(new Rect(20, 160, 120, 35), "Load Merge", closeButtonStyle);
-                GUI.enabled = true;
+                showQuestLoaderWindow = !showQuestLoaderWindow;
             }
+            curY += 35f;
 
             if (separatorTexture != null)
             {
-                GUI.DrawTexture(new Rect(20, 202, 260, 2), separatorTexture);
-            }
-
-            GUI.Label(new Rect(150, 225, 130, 20), "Quest ID:", labelStyle);
-
-            if (playerExists)
-            {
-                if (GUI.Button(new Rect(20, 220, 120, 35), "Load Quest", closeButtonStyle))
-                {
-                    if (int.TryParse(questIdInput, out int questId))
-                    {
-                        try
-                        {
-                            UIQuests.ShowQuestUI(new System.Collections.Generic.List<int> { questId }, QuestMode.Quest, null);
-                            LoggerInstance.Msg($"Requested load quest: {questId}");
-                        }
-                        catch (System.Exception ex)
-                        {
-                            LoggerInstance.Error($"Error loading quest {questId}: {ex}");
-                        }
-                    }
-                    else
-                    {
-                        LoggerInstance.Error($"Invalid quest ID input: '{questIdInput}'");
-                    }
-                }
+                curY += 6f;
+                GUI.DrawTexture(new Rect(20, curY, 260, 2), separatorTexture);
+                curY += 2f + 6f;
             }
             else
             {
-                GUI.enabled = false;
-                GUI.Button(new Rect(20, 220, 120, 35), "Load Quest", closeButtonStyle);
-                GUI.enabled = true;
+                curY += 10f;
             }
-            questIdInput = GUI.TextField(new Rect(150, 250, 130, 35), questIdInput, textFieldStyle);
 
-            if (playerExists)
-            {
-                if (GUI.Button(new Rect(20, 260, 120, 35), "Abandon", closeButtonStyle))
-                {
-                    if (int.TryParse(questIdInput, out int questId))
-                    {
-                        try
-                        {
-                            AEC.Instance.sendRequest(new RequestAbandonQuest(questId.ToString()));
-                            LoggerInstance.Msg($"Requested abandon quest: {questId}");
-                        }
-                        catch (System.Exception ex)
-                        {
-                            LoggerInstance.Error($"Error abandoning quest {questId}: {ex}");
-                        }
-                    }
-                    else
-                    {
-                        LoggerInstance.Error($"Invalid quest ID input for abandon: '{questIdInput}'");
-                    }
-                }
-            }
-            else
-            {
-                GUI.enabled = false;
-                GUI.Button(new Rect(20, 260, 120, 35), "Abandon", closeButtonStyle);
-                GUI.enabled = true;
-            }
-            if (separatorTexture != null)
-            {
-                GUI.DrawTexture(new Rect(20, 307, 260, 2), separatorTexture);
-            }
+            // Section 3: Autoskills
+            GUI.Label(new Rect(20, curY, 260, 20), "<b>Autoskills</b>", labelStyle);
+            curY += 22f;
 
             string autoSkillsText = autoskillsActive ? "Autoskills: ON" : "Autoskills: OFF";
             if (playerExists)
             {
-                if (GUI.Button(new Rect(20, 315, 120, 35), autoSkillsText, closeButtonStyle))
+                if (GUI.Button(new Rect(20, curY, 125, 35), autoSkillsText, closeButtonStyle))
                 {
                     autoskillsActive = !autoskillsActive;
                     if (autoskillsActive)
@@ -691,65 +597,97 @@ namespace Infinity_TestMod
             else
             {
                 GUI.enabled = false;
-                GUI.Button(new Rect(20, 315, 120, 35), "Autoskills: OFF", closeButtonStyle);
+                GUI.Button(new Rect(20, curY, 125, 35), "Autoskills: OFF", closeButtonStyle);
                 GUI.enabled = true;
                 autoskillsActive = false;
             }
 
-            if (GUI.Button(new Rect(150, 315, 130, 35), "Config", closeButtonStyle))
+            if (GUI.Button(new Rect(155, curY, 125, 35), "Config", closeButtonStyle))
             {
                 showConfigWindow = !showConfigWindow;
             }
+            curY += 35f;
 
             if (separatorTexture != null)
             {
-                GUI.DrawTexture(new Rect(20, 362, 260, 2), separatorTexture);
+                curY += 6f;
+                GUI.DrawTexture(new Rect(20, curY, 260, 2), separatorTexture);
+                curY += 2f + 6f;
+            }
+            else
+            {
+                curY += 10f;
             }
 
-            string interceptorBtnText = showInterceptorWindow ? "Hide Interceptor" : "Packet Interceptor";
-            if (GUI.Button(new Rect(20, 370, 260, 35), interceptorBtnText, closeButtonStyle))
+            // Section 4: Packets
+            GUI.Label(new Rect(20, curY, 260, 20), "<b>Packets</b>", labelStyle);
+            curY += 22f;
+
+            string interceptorBtnText = showInterceptorWindow ? "Hide Intercept" : "Interceptor";
+            if (GUI.Button(new Rect(20, curY, 125, 35), interceptorBtnText, closeButtonStyle))
             {
                 showInterceptorWindow = !showInterceptorWindow;
             }
 
-            string snifferBtnText = showSnifferWindow ? "Hide Sniffer" : "Packet Sniffer";
-            if (GUI.Button(new Rect(20, 410, 260, 35), snifferBtnText, closeButtonStyle))
+            string snifferBtnText = showSnifferWindow ? "Hide Sniffer" : "Sniffer";
+            if (GUI.Button(new Rect(155, curY, 125, 35), snifferBtnText, closeButtonStyle))
             {
                 showSnifferWindow = !showSnifferWindow;
             }
+            curY += 35f + 5f;
 
-            string senderBtnText = showSenderWindow ? "Hide Sender" : "Packet Sender";
-            if (GUI.Button(new Rect(20, 450, 125, 35), senderBtnText, closeButtonStyle))
+            string senderBtnText = showSenderWindow ? "Hide Sender" : "Sender";
+            if (GUI.Button(new Rect(20, curY, 125, 35), senderBtnText, closeButtonStyle))
             {
                 showSenderWindow = !showSenderWindow;
             }
 
             string receiverBtnText = showReceiverWindow ? "Hide Receiver" : "Receiver";
-            if (GUI.Button(new Rect(155, 450, 125, 35), receiverBtnText, closeButtonStyle))
+            if (GUI.Button(new Rect(155, curY, 125, 35), receiverBtnText, closeButtonStyle))
             {
                 showReceiverWindow = !showReceiverWindow;
             }
+            curY += 35f;
+
+            if (separatorTexture != null)
+            {
+                curY += 6f;
+                GUI.DrawTexture(new Rect(20, curY, 260, 2), separatorTexture);
+                curY += 2f + 6f;
+            }
+            else
+            {
+                curY += 10f;
+            }
+
+            // Section 5: Automation
+            GUI.Label(new Rect(20, curY, 260, 20), "<b>Automation</b>", labelStyle);
+            curY += 22f;
 
             string runnerBtnText = showQuestRunnerWindow ? "Hide Quest Runner" : "Quest Runner";
-            if (GUI.Button(new Rect(20, 490, 260, 35), runnerBtnText, closeButtonStyle))
+            if (GUI.Button(new Rect(20, curY, 260, 35), runnerBtnText, closeButtonStyle))
             {
                 showQuestRunnerWindow = !showQuestRunnerWindow;
             }
+            curY += 35f + 10f;
 
             if (closeButtonStyle != null)
             {
-                if (GUI.Button(new Rect(20, 530, 260, 35), "Close", closeButtonStyle))
+                if (GUI.Button(new Rect(20, curY, 260, 35), "Close", closeButtonStyle))
                 {
                     showWindow = false;
                 }
             }
             else
             {
-                if (GUI.Button(new Rect(20, 530, 260, 35), "Close"))
+                if (GUI.Button(new Rect(20, curY, 260, 35), "Close"))
                 {
                     showWindow = false;
                 }
             }
+            curY += 35f;
+
+            windowRect.height = curY + 20f;
 
             GUI.DragWindow(new Rect(0, 0, windowRect.width, 30));
         }
@@ -772,12 +710,12 @@ namespace Infinity_TestMod
             for (int i = 0; i < skillOrder.Count; i++)
             {
                 int slot = skillOrder[i];
-                int currentY = startY + i * 32;
+                int currentY = startY + i * 42;
 
-                GUI.Label(new Rect(20, currentY, 90, 25), GetSkillKeyName(slot), labelStyle);
+                GUI.Label(new Rect(20, currentY, 90, 35), GetSkillKeyName(slot), labelStyle);
 
                 string delayStr = delayInputs[slot];
-                string newDelayStr = GUI.TextField(new Rect(115, currentY, 65, 25), delayStr, textFieldStyle);
+                string newDelayStr = GUI.TextField(new Rect(115, currentY, 65, 35), delayStr, textFieldStyle);
                 if (newDelayStr != delayStr)
                 {
                     delayInputs[slot] = newDelayStr;
@@ -789,7 +727,7 @@ namespace Infinity_TestMod
 
                 if (i > 0)
                 {
-                    if (GUI.Button(new Rect(190, currentY, 32, 25), "▲", closeButtonStyle))
+                    if (GUI.Button(new Rect(190, currentY, 32, 35), "▲", closeButtonStyle))
                     {
                         (skillOrder[i - 1], skillOrder[i]) = (skillOrder[i], skillOrder[i - 1]);
                     }
@@ -797,7 +735,7 @@ namespace Infinity_TestMod
 
                 if (i < skillOrder.Count - 1)
                 {
-                    if (GUI.Button(new Rect(228, currentY, 32, 25), "▼", closeButtonStyle))
+                    if (GUI.Button(new Rect(228, currentY, 32, 35), "▼", closeButtonStyle))
                     {
                         (skillOrder[i + 1], skillOrder[i]) = (skillOrder[i], skillOrder[i + 1]);
                     }
@@ -805,11 +743,11 @@ namespace Infinity_TestMod
 
                 if (slot >= 0 && slot < skillEnabled.Length)
                 {
-                    skillEnabled[slot] = GUI.Toggle(new Rect(272, currentY + 3, 20, 20), skillEnabled[slot], "");
+                    skillEnabled[slot] = GUI.Toggle(new Rect(272, currentY + 8, 20, 20), skillEnabled[slot], "");
                 }
             }
 
-            if (GUI.Button(new Rect(20, 250, 280, 30), "Close Config", closeButtonStyle))
+            if (GUI.Button(new Rect(20, 305, 280, 35), "Close Config", closeButtonStyle))
             {
                 showConfigWindow = false;
             }
@@ -1021,22 +959,22 @@ namespace Infinity_TestMod
 
             GUI.Label(new Rect(pad, 35, innerW, 20), "Manual Inject (Send one packet)", labelStyle);
 
-            float Y = 70f;
+            float Y = 65f;
 
-            GUI.Label(new Rect(20, Y, 40, 25), "Cmd:", labelStyle);
-            senderCmdInput = GUI.TextField(new Rect(60, Y, 70, 25), senderCmdInput, textFieldStyle);
+            GUI.Label(new Rect(20, Y + 5, 40, 25), "Cmd:", labelStyle);
+            senderCmdInput = GUI.TextField(new Rect(60, Y, 70, 35), senderCmdInput, textFieldStyle);
 
             string paramsLabel = senderSingleString ? "Params (whole string):" : "Params (comma-sep):";
-            GUI.Label(new Rect(140, Y, 130, 25), paramsLabel, labelStyle);
-            senderParamsInput = GUI.TextField(new Rect(270, Y, 160, 25), senderParamsInput, textFieldStyle);
+            GUI.Label(new Rect(140, Y + 5, 130, 25), paramsLabel, labelStyle);
+            senderParamsInput = GUI.TextField(new Rect(270, Y, 160, 35), senderParamsInput, textFieldStyle);
 
             // Single-string toggle — for chat-style commands where the payload
             // contains literal commas (e.g. `message`: "hi, friend"), splitting
             // on comma would mangle them.
-            senderSingleString = GUI.Toggle(new Rect(pad, 100, 20, 20), senderSingleString, "");
-            GUI.Label(new Rect(pad + 25, 100, 220, 20), "Single string (no comma split)", labelStyle);
+            senderSingleString = GUI.Toggle(new Rect(pad, 110, 20, 20), senderSingleString, "");
+            GUI.Label(new Rect(pad + 25, 110, 220, 20), "Single string (no comma split)", labelStyle);
 
-            if (GUI.Button(new Rect(440, Y, 40, 25), "Send", closeButtonStyle))
+            if (GUI.Button(new Rect(440, Y, 40, 35), "Send", closeButtonStyle))
             {
                 string cmd = senderCmdInput.Trim();
                 string paramsRaw = senderParamsInput;
@@ -1113,21 +1051,21 @@ namespace Infinity_TestMod
 
             // Preset loaders
             float presetBtnW = (innerW - 10) / 3f;
-            if (GUI.Button(new Rect(pad, 75, presetBtnW, 25), "Preset: rNotify", closeButtonStyle))
+            if (GUI.Button(new Rect(pad, 80, presetBtnW, 35), "Preset: rNotify", closeButtonStyle))
             {
                 GUI.FocusControl(null);
                 GUIUtility.keyboardControl = 0;
                 receiverJsonInput = "{\"Cmd\":\"rNotify\",\"msg\":\"Hello from the void\"}";
             }
 
-            if (GUI.Button(new Rect(pad + presetBtnW + 5, 75, presetBtnW, 25), "Preset: Server Chat", closeButtonStyle))
+            if (GUI.Button(new Rect(pad + presetBtnW + 5, 80, presetBtnW, 35), "Preset: Server Chat", closeButtonStyle))
             {
                 GUI.FocusControl(null);
                 GUIUtility.keyboardControl = 0;
                 receiverJsonInput = "{\"Cmd\":\"chatm\",\"msg\":\"Hello from the server!\",\"Name\":\"SERVER\",\"channel\":\"server\"}";
             }
 
-            if (GUI.Button(new Rect(pad + (presetBtnW + 5) * 2, 75, presetBtnW, 25), "Preset: Zone Chat", closeButtonStyle))
+            if (GUI.Button(new Rect(pad + (presetBtnW + 5) * 2, 80, presetBtnW, 35), "Preset: Zone Chat", closeButtonStyle))
             {
                 GUI.FocusControl(null);
                 GUIUtility.keyboardControl = 0;
@@ -1140,7 +1078,7 @@ namespace Infinity_TestMod
             float contentHeight = 150f;
 
             receiverScrollPosition = GUI.BeginScrollView(
-                new Rect(pad, 110, innerW, 120),
+                new Rect(pad, 125, innerW, 120),
                 receiverScrollPosition,
                 new Rect(0, 0, contentWidth, contentHeight)
             );
@@ -1155,7 +1093,7 @@ namespace Infinity_TestMod
 
             float btnW = (innerW - 10) / 3f;
 
-            if (GUI.Button(new Rect(pad, 240, btnW, 35), "Inject", closeButtonStyle))
+            if (GUI.Button(new Rect(pad, 255, btnW, 35), "Inject", closeButtonStyle))
             {
                 string json = receiverJsonInput.Trim();
                 if (string.IsNullOrEmpty(json))
@@ -1168,14 +1106,14 @@ namespace Infinity_TestMod
                 }
             }
 
-            if (GUI.Button(new Rect(pad + btnW + 5, 240, btnW, 35), "Clear", closeButtonStyle))
+            if (GUI.Button(new Rect(pad + btnW + 5, 255, btnW, 35), "Clear", closeButtonStyle))
             {
                 GUI.FocusControl(null);
                 GUIUtility.keyboardControl = 0;
                 receiverJsonInput = "{\n  \"Cmd\": \"\",\n  \"Params\": {}\n}";
             }
 
-            if (GUI.Button(new Rect(pad + (btnW + 5) * 2, 240, btnW, 35), "Close", closeButtonStyle))
+            if (GUI.Button(new Rect(pad + (btnW + 5) * 2, 255, btnW, 35), "Close", closeButtonStyle))
             {
                 showReceiverWindow = false;
             }
@@ -1221,41 +1159,279 @@ namespace Infinity_TestMod
             }
         }
 
-        /// <summary>
-        /// One tier button in the client-side access-level row. Sets
-        /// Entity.mainPlayer.AccessLevel = level on click; shows a ▶ prefix
-        /// when the player's current level already matches. Disabled when
-        /// no player is loaded.
-        /// </summary>
-        private void DrawAccessTier(float x, float width, string label, int level, int currentLevel, bool playerExists)
+        private void DrawFakeDevWindow(int windowID)
+        {
+            float winWidth = fakeDevWindowRect.width;
+            float pad = 20f;
+            float innerW = winWidth - pad * 2;
+
+            bool playerExists = false;
+            try { playerExists = (Entity.mainPlayer != null); } catch { }
+
+            int currentLevel = -1;
+            try { if (playerExists) currentLevel = Entity.mainPlayer.AccessLevel; } catch { }
+
+            bool isMember = false;
+            try { if (playerExists) isMember = Entity.mainPlayer.UpgradeDays > 0; } catch { }
+
+            // 1. Membership section
+            GUI.Label(new Rect(pad, 35, innerW, 20), "Membership:", labelStyle);
+            string memLabel = isMember ? "▶ Member (Active)" : "Non-Member";
+            if (playerExists)
+            {
+                if (GUI.Button(new Rect(pad, 55, innerW, 35), memLabel, closeButtonStyle))
+                {
+                    try
+                    {
+                        Entity.mainPlayer.UpgradeDays = isMember ? 0 : 30;
+                        Entity.mainPlayer.updateNameColor();
+                        LoggerInstance.Msg($"Set client UpgradeDays to {Entity.mainPlayer.UpgradeDays} (member={!isMember}).");
+                    }
+                    catch (System.Exception ex)
+                    {
+                        LoggerInstance.Error($"Error toggling membership: {ex}");
+                    }
+                }
+            }
+            else
+            {
+                GUI.enabled = false;
+                GUI.Button(new Rect(pad, 55, innerW, 35), memLabel, closeButtonStyle);
+                GUI.enabled = true;
+            }
+
+            // 2. Access Levels section
+            GUI.Label(new Rect(pad, 100, innerW, 20), "Access Levels (hasAccess checks):", labelStyle);
+            float btnW = (innerW - 16) / 5f;
+            DrawFakeDevAccessTier(pad,             btnW, "30",  30,  currentLevel, playerExists);
+            DrawFakeDevAccessTier(pad + btnW + 4,  btnW, "40",  40,  currentLevel, playerExists);
+            DrawFakeDevAccessTier(pad + (btnW + 4)*2, btnW, "50",  50,  currentLevel, playerExists);
+            DrawFakeDevAccessTier(pad + (btnW + 4)*3, btnW, "60",  60,  currentLevel, playerExists);
+            DrawFakeDevAccessTier(pad + (btnW + 4)*4, btnW, "100", 100, currentLevel, playerExists);
+
+            // 3. Actions: Dev UI, Reset, Close
+            float actionBtnW = (innerW - 10) / 2f;
+            if (playerExists)
+            {
+                if (GUI.Button(new Rect(pad, 170, actionBtnW, 35), "Open Dev UI", closeButtonStyle))
+                {
+                    try
+                    {
+                        new DevWindow(new System.Collections.Generic.List<string>()).Execute();
+                        LoggerInstance.Msg("Opened dev window.");
+                    }
+                    catch (System.Exception ex)
+                    {
+                        LoggerInstance.Error($"Error executing DevWindow: {ex}");
+                    }
+                }
+
+                if (GUI.Button(new Rect(pad + actionBtnW + 10, 170, actionBtnW, 35), "Reset to Default", closeButtonStyle))
+                {
+                    try
+                    {
+                        if (defaultsCaptured)
+                        {
+                            Entity.mainPlayer.UpgradeDays = defaultUpgradeDays;
+                            Entity.mainPlayer.AccessLevel = defaultAccessLevel;
+                            Entity.mainPlayer.updateNameColor();
+                            LoggerInstance.Msg($"Reset player privileges to defaults: UpgradeDays={defaultUpgradeDays}, AccessLevel={defaultAccessLevel}");
+                        }
+                        else
+                        {
+                            LoggerInstance.Error("Cannot reset: Default player privileges were not captured.");
+                        }
+                    }
+                    catch (System.Exception ex)
+                    {
+                        LoggerInstance.Error($"Error resetting privileges: {ex}");
+                    }
+                }
+            }
+            else
+            {
+                GUI.enabled = false;
+                GUI.Button(new Rect(pad, 170, actionBtnW, 35), "Open Dev UI", closeButtonStyle);
+                GUI.Button(new Rect(pad + actionBtnW + 10, 170, actionBtnW, 35), "Reset to Default", closeButtonStyle);
+                GUI.enabled = true;
+            }
+
+            if (GUI.Button(new Rect(pad, 215, innerW, 35), "Close", closeButtonStyle))
+            {
+                showFakeDevWindow = false;
+            }
+
+            GUI.DragWindow(new Rect(0, 0, winWidth, 30));
+        }
+
+        private void DrawFakeDevAccessTier(float x, float width, string label, int level, int currentLevel, bool playerExists)
         {
             bool active = (currentLevel == level);
             string text = active ? "▶ " + label : label;
             if (!playerExists)
             {
                 GUI.enabled = false;
-                GUI.Button(new Rect(x, 70, width, 35), text, closeButtonStyle);
+                GUI.Button(new Rect(x, 125, width, 35), text, closeButtonStyle);
                 GUI.enabled = true;
                 return;
             }
-            if (GUI.Button(new Rect(x, 70, width, 35), text, closeButtonStyle))
+            if (GUI.Button(new Rect(x, 125, width, 35), text, closeButtonStyle))
             {
                 try
                 {
                     Entity.mainPlayer.AccessLevel = level;
-                    // The field setter doesn't repaint the nameplate — the
-                    // game only does that during creation. Force the refresh
-                    // ourselves so the user actually sees the tier color.
-                    // (Player.updateNameColor() reads AccessLevel and pushes
-                    //  the result through Util.GetAccessLevelColor.)
                     Entity.mainPlayer.updateNameColor();
-                    LoggerInstance.Msg($"Set client AccessLevel to {level} ({label}). Server still enforces real privileges.");
+                    LoggerInstance.Msg($"Set client AccessLevel to {level}.");
                 }
                 catch (System.Exception ex)
                 {
-                    LoggerInstance.Error($"Error setting access level to {level}: {ex}");
+                    LoggerInstance.Error($"Error setting access level: {ex}");
                 }
             }
+        }
+
+        private void DrawShopLoaderWindow(int windowID)
+        {
+            float winWidth = shopLoaderWindowRect.width;
+            float pad = 20f;
+            float innerW = winWidth - pad * 2;
+
+            bool playerExists = false;
+            try { playerExists = (Entity.mainPlayer != null); } catch { }
+
+            GUI.Label(new Rect(pad, 35, innerW, 20), "Shop ID:", labelStyle);
+            shopIdInput = GUI.TextField(new Rect(pad, 60, innerW, 35), shopIdInput, textFieldStyle);
+
+            float btnW = (innerW - 10) / 2f;
+            if (playerExists)
+            {
+                if (GUI.Button(new Rect(pad, 105, btnW, 35), "Load Shop", closeButtonStyle))
+                {
+                    if (int.TryParse(shopIdInput, out int shopId))
+                    {
+                        try
+                        {
+                            AEC.Instance.sendRequest(new RequestLoadShop(shopId));
+                            LoggerInstance.Msg($"Requested load shop: {shopId}");
+                        }
+                        catch (System.Exception ex)
+                        {
+                            LoggerInstance.Error($"Error loading shop {shopId}: {ex}");
+                        }
+                    }
+                    else
+                    {
+                        LoggerInstance.Error($"Invalid shop ID input: '{shopIdInput}'");
+                    }
+                }
+
+                if (GUI.Button(new Rect(pad + btnW + 10, 105, btnW, 35), "Load Merge", closeButtonStyle))
+                {
+                    if (int.TryParse(shopIdInput, out int shopId))
+                    {
+                        try
+                        {
+                            forceMergeShop = true;
+                            AEC.Instance.sendRequest(new RequestLoadShop(shopId));
+                            LoggerInstance.Msg($"Requested load merge shop: {shopId}");
+                        }
+                        catch (System.Exception ex)
+                        {
+                            forceMergeShop = false;
+                            LoggerInstance.Error($"Error loading merge shop {shopId}: {ex}");
+                        }
+                    }
+                    else
+                    {
+                        LoggerInstance.Error($"Invalid shop ID input: '{shopIdInput}'");
+                    }
+                }
+            }
+            else
+            {
+                GUI.enabled = false;
+                GUI.Button(new Rect(pad, 105, btnW, 35), "Load Shop", closeButtonStyle);
+                GUI.Button(new Rect(pad + btnW + 10, 105, btnW, 35), "Load Merge", closeButtonStyle);
+                GUI.enabled = true;
+            }
+
+            if (GUI.Button(new Rect(pad, 150, innerW, 35), "Close", closeButtonStyle))
+            {
+                showShopLoaderWindow = false;
+            }
+
+            GUI.DragWindow(new Rect(0, 0, winWidth, 30));
+        }
+
+        private void DrawQuestLoaderWindow(int windowID)
+        {
+            float winWidth = questLoaderWindowRect.width;
+            float pad = 20f;
+            float innerW = winWidth - pad * 2;
+
+            bool playerExists = false;
+            try { playerExists = (Entity.mainPlayer != null); } catch { }
+
+            GUI.Label(new Rect(pad, 35, innerW, 20), "Quest ID:", labelStyle);
+            questIdInput = GUI.TextField(new Rect(pad, 60, innerW, 35), questIdInput, textFieldStyle);
+
+            float btnW = (innerW - 10) / 2f;
+            if (playerExists)
+            {
+                if (GUI.Button(new Rect(pad, 105, btnW, 35), "Load Quest", closeButtonStyle))
+                {
+                    if (int.TryParse(questIdInput, out int questId))
+                    {
+                        try
+                        {
+                            UIQuests.ShowQuestUI(new System.Collections.Generic.List<int> { questId }, QuestMode.Quest, null);
+                            LoggerInstance.Msg($"Requested load quest: {questId}");
+                        }
+                        catch (System.Exception ex)
+                        {
+                            LoggerInstance.Error($"Error loading quest {questId}: {ex}");
+                        }
+                    }
+                    else
+                    {
+                        LoggerInstance.Error($"Invalid quest ID input: '{questIdInput}'");
+                    }
+                }
+
+                if (GUI.Button(new Rect(pad + btnW + 10, 105, btnW, 35), "Abandon", closeButtonStyle))
+                {
+                    if (int.TryParse(questIdInput, out int questId))
+                    {
+                        try
+                        {
+                            AEC.Instance.sendRequest(new RequestAbandonQuest(questId.ToString()));
+                            LoggerInstance.Msg($"Requested abandon quest: {questId}");
+                        }
+                        catch (System.Exception ex)
+                        {
+                            LoggerInstance.Error($"Error abandoning quest {questId}: {ex}");
+                        }
+                    }
+                    else
+                    {
+                        LoggerInstance.Error($"Invalid quest ID input for abandon: '{questIdInput}'");
+                    }
+                }
+            }
+            else
+            {
+                GUI.enabled = false;
+                GUI.Button(new Rect(pad, 105, btnW, 35), "Load Quest", closeButtonStyle);
+                GUI.Button(new Rect(pad + btnW + 10, 105, btnW, 35), "Abandon", closeButtonStyle);
+                GUI.enabled = true;
+            }
+
+            if (GUI.Button(new Rect(pad, 150, innerW, 35), "Close", closeButtonStyle))
+            {
+                showQuestLoaderWindow = false;
+            }
+
+            GUI.DragWindow(new Rect(0, 0, winWidth, 30));
         }
 
         private void DrawQuestRunnerWindow(int windowID)
@@ -1265,28 +1441,28 @@ namespace Infinity_TestMod
             float innerW = winWidth - pad * 2;
 
             // Row 1: inputs
-            GUI.Label(new Rect(pad, 35, 70, 25), "Quest ID:", labelStyle);
-            questRunnerIdInput = GUI.TextField(new Rect(pad + 70, 35, 60, 25), questRunnerIdInput, textFieldStyle);
+            GUI.Label(new Rect(pad, 35 + 5, 70, 25), "Quest ID:", labelStyle);
+            questRunnerIdInput = GUI.TextField(new Rect(pad + 70, 35, 60, 35), questRunnerIdInput, textFieldStyle);
             // Browse button — opens the picker inline.
             string browseLabel = showQuestPicker ? "▼" : "▶";
-            if (GUI.Button(new Rect(pad + 132, 35, 24, 25), browseLabel, closeButtonStyle))
+            if (GUI.Button(new Rect(pad + 132, 35, 24, 35), browseLabel, closeButtonStyle))
             {
                 showQuestPicker = !showQuestPicker;
             }
-            GUI.Label(new Rect(pad + 160, 35, 70, 25), "Iters:", labelStyle);
-            questRunnerItersInput = GUI.TextField(new Rect(pad + 210, 35, 60, 25), questRunnerItersInput, textFieldStyle);
+            GUI.Label(new Rect(pad + 160, 35 + 5, 70, 25), "Iters:", labelStyle);
+            questRunnerItersInput = GUI.TextField(new Rect(pad + 210, 35, 60, 35), questRunnerItersInput, textFieldStyle);
             // Resolved-name preview to the right of Stop, replacing the
             // previous y=58 line that was colliding with the Frame row.
             string resolvedName = "?";
             if (int.TryParse(questRunnerIdInput, out int previewQid)
                 && Directory.Quests.TryGetValue(previewQid, out var qe))
                 resolvedName = qe.name ?? "?";
-            GUI.Label(new Rect(pad + 460, 35, 200, 25),
+            GUI.Label(new Rect(pad + 460, 35 + 5, 200, 25),
                 $"  ↳ {resolvedName}", logTextStyle);
 
             bool isRunning = questRunner.IsRunning;
             GUI.enabled = !isRunning;
-            if (GUI.Button(new Rect(pad + 280, 35, 80, 25), "Start", closeButtonStyle))
+            if (GUI.Button(new Rect(pad + 280, 35, 80, 35), "Start", closeButtonStyle))
             {
                 if (int.TryParse(questRunnerIdInput, out int qid) && int.TryParse(questRunnerItersInput, out int iters))
                 {
@@ -1310,17 +1486,17 @@ namespace Infinity_TestMod
             // Second input row: optional in-zone hop. Leave Frame empty to
             // stay where you are. Current frame is shown on the right so the
             // user can copy it for next-quest test entries.
-            GUI.Label(new Rect(pad, 62, 70, 22), "Frame:", labelStyle);
-            questRunnerFrameInput = GUI.TextField(new Rect(pad + 50, 62, 90, 22), questRunnerFrameInput, textFieldStyle);
-            GUI.Label(new Rect(pad + 150, 62, 40, 22), "Pad:", labelStyle);
-            questRunnerPadInput = GUI.TextField(new Rect(pad + 190, 62, 80, 22), questRunnerPadInput, textFieldStyle);
+            GUI.Label(new Rect(pad, 80 + 5, 70, 25), "Frame:", labelStyle);
+            questRunnerFrameInput = GUI.TextField(new Rect(pad + 50, 80, 90, 35), questRunnerFrameInput, textFieldStyle);
+            GUI.Label(new Rect(pad + 150, 80 + 5, 40, 25), "Pad:", labelStyle);
+            questRunnerPadInput = GUI.TextField(new Rect(pad + 190, 80, 80, 35), questRunnerPadInput, textFieldStyle);
             string hereFrame = "?";
             try { hereFrame = Entity.mainPlayer?.Frame ?? "?"; } catch { }
-            GUI.Label(new Rect(pad + 280, 62, 200, 22), $"  here: {hereFrame}", logTextStyle);
+            GUI.Label(new Rect(pad + 280, 80 + 5, 200, 25), $"  here: {hereFrame}", logTextStyle);
             GUI.enabled = true;
 
             GUI.enabled = isRunning;
-            if (GUI.Button(new Rect(pad + 370, 35, 80, 25), "Stop", closeButtonStyle))
+            if (GUI.Button(new Rect(pad + 370, 35, 80, 35), "Stop", closeButtonStyle))
             {
                 questRunner.Stop();
             }
@@ -1329,11 +1505,11 @@ namespace Infinity_TestMod
             // Row 3: status
             string stateStr = $"<b>State:</b> {questRunner.State}    " +
                               $"<b>Iter:</b> {questRunner.CurrentIteration}/{questRunner.Iterations}";
-            GUI.Label(new Rect(pad, 95, innerW, 20), stateStr, labelStyle);
-            GUI.Label(new Rect(pad, 117, innerW, 20), $"<b>Status:</b> {questRunner.StatusLine}", labelStyle);
+            GUI.Label(new Rect(pad, 125, innerW, 20), stateStr, labelStyle);
+            GUI.Label(new Rect(pad, 147, innerW, 20), $"<b>Status:</b> {questRunner.StatusLine}", labelStyle);
 
             // Row 4: per-objective progress (read live from in-process state)
-            float yObj = 145;
+            float yObj = 175;
             try
             {
                 if (int.TryParse(questRunnerIdInput, out int qid))
@@ -1356,14 +1532,14 @@ namespace Infinity_TestMod
                     else
                     {
                         GUI.Label(new Rect(pad, yObj, innerW, 18),
-                            "  (no quest def cached — open the quest UI once)", logTextStyle);
+                             "  (no quest def cached — open the quest UI once)", logTextStyle);
                     }
                 }
             }
             catch { /* layout-time read errors aren't worth surfacing */ }
 
             // Row 5: event log
-            float logY = 260;
+            float logY = 295;
             GUI.Box(new Rect(pad, logY, innerW, 75), "", GUI.skin.box);
             float logH;
             lock (questRunnerLog) { logH = System.Math.Max(65f, questRunnerLog.Count * 16f); }
@@ -1390,8 +1566,8 @@ namespace Infinity_TestMod
                 : chainNames[questChainPickerIndex % chainNames.Count];
             int currentEntryCount = chainNames.Count == 0 ? 0 : (QuestChains.Get(currentChainName)?.Count ?? 0);
 
-            GUI.Label(new Rect(pad, 343, 60, 24), "Chain:", labelStyle);
-            if (GUI.Button(new Rect(pad + 60, 343, 180, 24),
+            GUI.Label(new Rect(pad, 380 + 5, 60, 25), "Chain:", labelStyle);
+            if (GUI.Button(new Rect(pad + 60, 380, 180, 35),
                 $"{currentChainName}  ({currentEntryCount} entries)", closeButtonStyle))
             {
                 if (chainNames.Count > 0)
@@ -1402,11 +1578,11 @@ namespace Infinity_TestMod
             string chainProgress = (questRunner.ChainEntries != null)
                 ? $"  ▶ {questRunner.ChainName} {questRunner.ChainIndex + 1}/{questRunner.ChainEntries.Count}"
                 : "";
-            GUI.Label(new Rect(pad + 250, 343, 200, 24), chainProgress, logTextStyle);
+            GUI.Label(new Rect(pad + 250, 380 + 5, 200, 25), chainProgress, logTextStyle);
 
             bool isRunningC = questRunner.IsRunning;
             GUI.enabled = !isRunningC && chainNames.Count > 0;
-            if (GUI.Button(new Rect(pad + 460, 343, 120, 24), "Run Chain", closeButtonStyle))
+            if (GUI.Button(new Rect(pad + 460, 380, 120, 35), "Run Chain", closeButtonStyle))
             {
                 questRunnerLog.Clear();
                 questRunner.OnLog = line =>
@@ -1421,7 +1597,7 @@ namespace Infinity_TestMod
             }
             GUI.enabled = true;
 
-            if (GUI.Button(new Rect(pad, 375, innerW, 22), "Close Runner", closeButtonStyle))
+            if (GUI.Button(new Rect(pad, 425, innerW, 35), "Close Runner", closeButtonStyle))
             {
                 showQuestRunnerWindow = false;
             }
@@ -1432,12 +1608,12 @@ namespace Infinity_TestMod
             {
                 // Covers the lower content (status, objectives, log) when open.
                 // Positioned just below the two input rows.
-                float pickerY = 95;
-                float pickerH = 235;
+                float pickerY = 125;
+                float pickerH = 290;
                 GUI.Box(new Rect(pad - 2, pickerY - 2, innerW + 4, pickerH + 4), "");
-                GUI.Label(new Rect(pad, pickerY, 70, 22), "Filter:", labelStyle);
-                questPickerFilter = GUI.TextField(new Rect(pad + 60, pickerY, 260, 22), questPickerFilter, textFieldStyle);
-                GUI.Label(new Rect(pad + 330, pickerY, 200, 22),
+                GUI.Label(new Rect(pad, pickerY + 5, 70, 25), "Filter:", labelStyle);
+                questPickerFilter = GUI.TextField(new Rect(pad + 60, pickerY, 260, 35), questPickerFilter, textFieldStyle);
+                GUI.Label(new Rect(pad + 330, pickerY + 5, 200, 25),
                     $"({Directory.Quests.Count} known)", labelStyle);
 
                 // Filtered list — only enumerate Directory entries that match
@@ -1459,7 +1635,7 @@ namespace Infinity_TestMod
                 float rowH = 20f;
                 float contentH = System.Math.Max(pickerH - 50, matches.Count * rowH + 4);
                 questPickerScroll = GUI.BeginScrollView(
-                    new Rect(pad, pickerY + 28, innerW, pickerH - 32),
+                    new Rect(pad, pickerY + 40, innerW, pickerH - 45),
                     questPickerScroll,
                     new Rect(0, 0, innerW - 20, contentH));
                 for (int i = 0; i < matches.Count; i++)
@@ -1491,6 +1667,18 @@ namespace Infinity_TestMod
             }
 
             if (showWindow && windowRect.Contains(imguiMousePos))
+            {
+                return true;
+            }
+            if (showWindow && showFakeDevWindow && fakeDevWindowRect.Contains(imguiMousePos))
+            {
+                return true;
+            }
+            if (showWindow && showShopLoaderWindow && shopLoaderWindowRect.Contains(imguiMousePos))
+            {
+                return true;
+            }
+            if (showWindow && showQuestLoaderWindow && questLoaderWindowRect.Contains(imguiMousePos))
             {
                 return true;
             }
