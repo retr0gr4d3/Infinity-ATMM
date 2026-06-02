@@ -1,0 +1,13 @@
+bin/
+obj/
+build/
+buildtomods.bat
+*.user
+*.userprefs
+*.suo
+*.sln.docstates
+.vs/
+.idea/
+.vscode/
+*.dll
+*.pdb
