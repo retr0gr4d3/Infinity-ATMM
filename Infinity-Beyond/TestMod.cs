@@ -4,6 +4,7 @@ using UnityEngine;
 using Infinity_TestMod.Patches;
 using Infinity_TestMod.Util;
 using System.Collections.Generic;
+using System.Linq;
 using Newtonsoft.Json;
 using MelonLoader.Utils;
 
@@ -39,6 +40,11 @@ namespace Infinity_TestMod
         public static bool showFunWindow = false;
         public static Rect funWindowRect = new(330, 410, 360, 560);
 
+        // Extra Fun — sibling to Fun for niche/experimental spoofs. Owns
+        // catalog slot 6 (Monster→Pet); shared catalog state with Fun.
+        public static bool showExtraFunWindow = false;
+        public static Rect extraFunWindowRect = new(700, 410, 360, 360);
+
         public static bool showRetroTestsWindow = false;
         public static Rect retroTestsWindowRect = new(330, 350, 320, 640);
 
@@ -58,6 +64,43 @@ namespace Infinity_TestMod
         public static string backSpoofBundle = "";
         private static string backSpoofInput = "";
 
+        public static bool weaponSpoofActive = false;
+        public static string weaponSpoofBundle = "";
+        private static string weaponSpoofInput = "";
+
+        public static bool petSpoofActive = false;
+        public static string petSpoofBundle = "";
+        private static string petSpoofInput = "";
+
+        // Monster transform — uses the game's built-in ApplyMonTransform
+        // (transform-potion path). Caveat: entering Combat auto-removes
+        // the transform (Entity.currentState setter does this), so it's
+        // an out-of-combat cosmetic only.
+        public static bool monTransformActive = false;
+        public static string monTransformBundle = "";
+        private static string monTransformInput = "";
+
+        // While the player is in combat, cycle random animation clips on the
+        // spoofed pet's Animator. Driven by PetCombatAnimDriver from OnUpdate.
+        public static bool petCombatAnimActive = false;
+
+        // Jukebox: play any soundtrack by ID (typically 1..318). Dropdown is
+        // populated passively by MusicHarvestPatch — every track the game
+        // registers with BGMusicManager (area BGM, cutscene stings, our own
+        // loads) lands in MusicCatalog and shows up here.
+        private static string jukeboxInput = "";
+        private static int jukeboxSelectedId = 0;
+        private static bool jukeboxPickerOpen = false;
+        private static string jukeboxFilter = "";
+        private static UnityEngine.Vector2 jukeboxScroll = UnityEngine.Vector2.zero;
+
+        private static string FormatTrackTime(float seconds)
+        {
+            if (seconds <= 0f) return "?";
+            int s = (int)System.Math.Round(seconds);
+            return $"{s / 60}:{(s % 60):D2}";
+        }
+
         // Gender flip — mutates Entity.mainPlayer.Gender (enum field) while
         // active so every gender consumer (avatar rig prefab, pronouns,
         // hair option matchers) sees the flipped value uniformly. Original
@@ -66,11 +109,16 @@ namespace Infinity_TestMod
         private static Player.genders genderSpoofOriginal = Player.genders.Male;
 
         // Shared catalog dropdown: only one slot's picker is expanded at a
-        // time (0=none, 1=Helm, 2=Armor, 3=Back). Filter+scroll persist
-        // across openings so a search isn't lost when switching slots.
+        // time (0=none, 1=Helm, 2=Armor, 3=Back, 4=Weapon, 5=Pet). Filter+scroll
+        // persist across openings so a search isn't lost when switching slots.
         private static int catalogOpenSlot = 0;
         private static string catalogFilter = "";
         private static Vector2 catalogScroll = Vector2.zero;
+        // Two-click confirm for the catalog Clear button: holds the slot key
+        // that's currently armed and the realtime timestamp when it became
+        // armed. Auto-disarms after ~3s without the second click.
+        private static int catalogClearArmedSlot = 0;
+        private static float catalogClearArmedTime = 0f;
 
         public static bool showShopLoaderWindow = false;
         public static Rect shopLoaderWindowRect = new(330, 100, 280, 205);
@@ -197,6 +245,7 @@ namespace Infinity_TestMod
             PacketLog.Init();
             Directory.Init();
             ItemCatalog.Init();
+            MusicCatalog.Init();
             QuestChains.Init();
 
             string userDir = System.IO.Path.Combine(MelonEnvironment.UserDataDirectory, "Beyond");
@@ -214,6 +263,7 @@ namespace Infinity_TestMod
         {
             Directory.Save();
             ItemCatalog.Save();
+            MusicCatalog.Save();
             PacketLog.Close();
             SaveSkillsets();
         }
@@ -236,6 +286,9 @@ namespace Infinity_TestMod
         {
             // Tick the quest runner every frame. It's a no-op when Idle/Done/Failed.
             try { questRunner?.Tick(); } catch (System.Exception ex) { LoggerInstance.Error($"QuestRunner tick: {ex.Message}"); }
+
+            // Pet combat-anim driver — no-op when toggle off or no pet.
+            try { PetCombatAnimDriver.Tick(); } catch (System.Exception ex) { LoggerInstance.Error($"PetCombatAnim tick: {ex.Message}"); }
 
             if (autoskillsActive)
             {
@@ -667,6 +720,18 @@ namespace Infinity_TestMod
                 }
             }
 
+            if (showWindow && showExtraFunWindow)
+            {
+                if (windowStyle != null)
+                {
+                    extraFunWindowRect = GUI.Window(9987, extraFunWindowRect, DrawExtraFunWindow, "Extra Fun", windowStyle);
+                }
+                else
+                {
+                    extraFunWindowRect = GUI.Window(9987, extraFunWindowRect, DrawExtraFunWindow, "Extra Fun");
+                }
+            }
+
             if (showWindow && showRetroTestsWindow)
             {
                 if (windowStyle != null)
@@ -886,9 +951,15 @@ namespace Infinity_TestMod
             curY += 22f;
 
             string funBtnText = showFunWindow ? "Hide Fun" : "Fun";
-            if (GUI.Button(new Rect(20, curY, 260, 35), funBtnText, closeButtonStyle))
+            if (GUI.Button(new Rect(20, curY, 125, 35), funBtnText, closeButtonStyle))
             {
                 showFunWindow = !showFunWindow;
+            }
+
+            string extraFunBtnText = showExtraFunWindow ? "Hide Extra" : "Extra Fun";
+            if (GUI.Button(new Rect(155, curY, 125, 35), extraFunBtnText, closeButtonStyle))
+            {
+                showExtraFunWindow = !showExtraFunWindow;
             }
             curY += 35f;
 
@@ -2001,69 +2072,20 @@ namespace Infinity_TestMod
                 ref backSpoofInput, backSpoofActive,
                 ApplyBackSpoof, ClearBackSpoof);
 
-            // 5. Shared catalog panel — only drawn when a slot's Browse is open.
-            if (catalogOpenSlot != 0)
-            {
-                System.Collections.Generic.Dictionary<string, ItemCatalog.ItemEntry> bucket;
-                System.Action<string> onSelect;
-                string slotLabel;
-                switch (catalogOpenSlot)
-                {
-                    case 1: bucket = ItemCatalog.Helms;  onSelect = s => helmSpoofInput  = s; slotLabel = "Helm";  break;
-                    case 2: bucket = ItemCatalog.Armors; onSelect = s => armorSpoofInput = s; slotLabel = "Armor"; break;
-                    case 3: bucket = ItemCatalog.Backs;  onSelect = s => backSpoofInput  = s; slotLabel = "Cape";  break;
-                    default: bucket = null; onSelect = null; slotLabel = ""; break;
-                }
-                if (bucket != null)
-                {
-                    GUI.Label(new Rect(pad, curY, innerW, 20),
-                        $"{slotLabel} Catalog ({bucket.Count}) — filter:", labelStyle);
-                    curY += 22f;
-                    catalogFilter = GUI.TextField(new Rect(pad, curY, innerW, 28), catalogFilter, textFieldStyle);
-                    curY += 32f;
+            curY = DrawGearSpoofSlot(curY, pad, innerW, playerExists,
+                "Weapon", 4,
+                ref weaponSpoofInput, weaponSpoofActive,
+                ApplyWeaponSpoof, ClearWeaponSpoof);
 
-                    string filt = catalogFilter?.ToLowerInvariant() ?? "";
-                    var matches = new System.Collections.Generic.List<ItemCatalog.ItemEntry>();
-                    foreach (var e in bucket.Values)
-                    {
-                        string display = !string.IsNullOrEmpty(e.name) ? e.name : ItemCatalog.ParseFriendlyName(e.bundle);
-                        if (filt.Length == 0
-                            || (display?.ToLowerInvariant().Contains(filt) ?? false)
-                            || (e.bundle?.ToLowerInvariant().Contains(filt) ?? false))
-                            matches.Add(e);
-                    }
-                    matches.Sort((a, b) =>
-                    {
-                        string an = !string.IsNullOrEmpty(a.name) ? a.name : ItemCatalog.ParseFriendlyName(a.bundle);
-                        string bn = !string.IsNullOrEmpty(b.name) ? b.name : ItemCatalog.ParseFriendlyName(b.bundle);
-                        return string.Compare(an, bn, System.StringComparison.OrdinalIgnoreCase);
-                    });
+            curY = DrawGearSpoofSlot(curY, pad, innerW, playerExists,
+                "Pet", 5,
+                ref petSpoofInput, petSpoofActive,
+                ApplyPetSpoof, ClearPetSpoof);
 
-                    float listH = 180f;
-                    GUI.Box(new Rect(pad, curY, innerW, listH), "", GUI.skin.box);
-                    float rowH = 22f;
-                    float contentH = System.Math.Max(listH - 8, matches.Count * rowH + 4);
-                    catalogScroll = GUI.BeginScrollView(
-                        new Rect(pad, curY, innerW, listH),
-                        catalogScroll,
-                        new Rect(0, 0, innerW - 20, contentH));
-                    for (int i = 0; i < matches.Count; i++)
-                    {
-                        var e = matches[i];
-                        string display = !string.IsNullOrEmpty(e.name)
-                            ? e.name
-                            : ItemCatalog.ParseFriendlyName(e.bundle);
-                        if (GUI.Button(new Rect(2, 2 + i * rowH, innerW - 28, rowH - 2), "  " + display, rowButtonStyle))
-                        {
-                            onSelect?.Invoke(e.bundle);
-                            GUI.FocusControl(null);
-                            GUIUtility.keyboardControl = 0;
-                        }
-                    }
-                    GUI.EndScrollView();
-                    curY += listH + 10f;
-                }
-            }
+            // Shared catalog panel — only this window's slots (1..5). Slot 6
+            // (Monster→Pet) is owned by Extra Fun and renders its picker there.
+            if (catalogOpenSlot >= 1 && catalogOpenSlot <= 5)
+                curY = DrawCatalogPicker(curY, pad, innerW);
 
             if (GUI.Button(new Rect(pad, curY, innerW, 32), "Close", closeButtonStyle))
                 showFunWindow = false;
@@ -2073,6 +2095,244 @@ namespace Infinity_TestMod
             funWindowRect.height = curY + 10f;
 
             GUI.DragWindow(new Rect(0, 0, winWidth, 30));
+        }
+
+        // Extra Fun — sibling window for niche spoofs. Currently hosts the
+        // Monster→Pet row, which reuses the Pet spoof state/handlers but
+        // owns its own catalog slot (6 = Monsters bucket).
+        private void DrawExtraFunWindow(int windowID)
+        {
+            float winWidth = extraFunWindowRect.width;
+            float pad = 20f;
+            float innerW = winWidth - pad * 2;
+
+            bool playerExists = false;
+            try { playerExists = (Entity.mainPlayer != null); } catch { }
+
+            float curY = 35f;
+
+            curY = DrawGearSpoofSlot(curY, pad, innerW, playerExists,
+                "Monster→Pet", 6,
+                ref petSpoofInput, petSpoofActive,
+                ApplyPetSpoof, ClearPetSpoof);
+
+            curY = DrawGearSpoofSlot(curY, pad, innerW, playerExists,
+                "Become Monster", 7,
+                ref monTransformInput, monTransformActive,
+                ApplyMonTransformSpoof, ClearMonTransformSpoof);
+
+            // Jukebox — play any soundtrack by ID. Loads via SoundtrackLoader
+            // (data/getsoundtracks?ids=<id>) on first request, cached after.
+            // Known tracks come from MusicCatalog (harvested passively).
+            int namedCount = MusicCatalog.Tracks.Values.Count(t => !string.IsNullOrEmpty(t.name));
+            GUI.Label(new Rect(pad, curY, innerW, 18), $"Jukebox ({namedCount} / {MusicCatalog.Tracks.Count} named):", labelStyle);
+            curY += 20f;
+
+            // Selection toggle — clicking opens the picker panel.
+            string selLabel = "▼ (select a track)";
+            if (jukeboxSelectedId > 0 && MusicCatalog.Tracks.TryGetValue(jukeboxSelectedId, out var curTrack))
+            {
+                string nm = string.IsNullOrEmpty(curTrack.name) ? "?" : curTrack.name;
+                selLabel = $"{(jukeboxPickerOpen ? "▲" : "▼")} {curTrack.id} — {nm}  ({FormatTrackTime(curTrack.length)})";
+            }
+            else
+            {
+                selLabel = (jukeboxPickerOpen ? "▲" : "▼") + " (select a track)";
+            }
+            if (GUI.Button(new Rect(pad, curY, innerW, 26), selLabel, closeButtonStyle))
+                jukeboxPickerOpen = !jukeboxPickerOpen;
+            curY += 30f;
+
+            if (jukeboxPickerOpen)
+            {
+                // Filter — matches against id or name, substring.
+                GUI.Label(new Rect(pad, curY, 60, 22), "Filter:", labelStyle);
+                jukeboxFilter = GUI.TextField(new Rect(pad + 60, curY, innerW - 60, 22), jukeboxFilter ?? "");
+                curY += 26f;
+
+                var filter = (jukeboxFilter ?? "").Trim();
+                var entries = MusicCatalog.Tracks.Values
+                    .Where(t => string.IsNullOrEmpty(filter)
+                        || t.id.ToString().Contains(filter)
+                        || (!string.IsNullOrEmpty(t.name)
+                            && t.name.IndexOf(filter, System.StringComparison.OrdinalIgnoreCase) >= 0))
+                    .OrderBy(t => t.id)
+                    .ToList();
+
+                float listH = 160f;
+                float rowH = 22f;
+                float contentH = entries.Count * rowH;
+                jukeboxScroll = GUI.BeginScrollView(
+                    new Rect(pad, curY, innerW, listH),
+                    jukeboxScroll,
+                    new Rect(0, 0, innerW - 20, contentH));
+                for (int i = 0; i < entries.Count; i++)
+                {
+                    var t = entries[i];
+                    string nm = string.IsNullOrEmpty(t.name) ? "?" : t.name;
+                    string row = $"{t.id,4} — {nm}  ({FormatTrackTime(t.length)})";
+                    if (GUI.Button(new Rect(0, i * rowH, innerW - 20, rowH - 2), row, closeButtonStyle))
+                    {
+                        jukeboxSelectedId = t.id;
+                        jukeboxPickerOpen = false;
+                    }
+                }
+                GUI.EndScrollView();
+                curY += listH + 6f;
+            }
+
+            // Action row: Play (selected), Stop, Restore Area BGM.
+            float jbW = (innerW - 20) / 3f;
+            if (GUI.Button(new Rect(pad, curY, jbW, 30), "Play", closeButtonStyle))
+            {
+                if (jukeboxSelectedId > 0) Jukebox.Play(jukeboxSelectedId);
+                else MelonLogger.Warning("[Jukebox] no track selected");
+            }
+            if (GUI.Button(new Rect(pad + jbW + 10, curY, jbW, 30), "Stop", closeButtonStyle))
+                Jukebox.Stop();
+            if (GUI.Button(new Rect(pad + (jbW + 10) * 2, curY, jbW, 30), "Restore Area", closeButtonStyle))
+                Jukebox.RestoreAreaBGM();
+            curY += 36f;
+
+            // Escape hatch — type an ID that isn't in the catalog yet (so
+            // there's no row to click) and play it. Once it loads, the
+            // harvest patch records it for future dropdown visibility.
+            GUI.Label(new Rect(pad, curY, 90, 22), "Play by ID:", labelStyle);
+            jukeboxInput = GUI.TextField(new Rect(pad + 90, curY, innerW - 90 - 70, 22), jukeboxInput ?? "");
+            if (GUI.Button(new Rect(pad + innerW - 65, curY, 65, 22), "Go", closeButtonStyle))
+            {
+                if (int.TryParse((jukeboxInput ?? "").Trim(), out int rawId))
+                    Jukebox.Play(rawId);
+                else
+                    MelonLogger.Warning($"[Jukebox] '{jukeboxInput}' is not a number");
+            }
+            curY += 30f;
+
+            // Pet combat-anim cycler — applies to the spoofed pet (Monster→Pet).
+            // Only meaningful when there's a pet GO; toggle stays clickable
+            // regardless so users can pre-arm it.
+            string animBtn = petCombatAnimActive
+                ? "Pet Combat Anims: ON"
+                : "Pet Combat Anims: OFF";
+            if (GUI.Button(new Rect(pad, curY, innerW, 30), animBtn, closeButtonStyle))
+            {
+                petCombatAnimActive = !petCombatAnimActive;
+                MelonLogger.Msg($"[PetCombatAnim] {(petCombatAnimActive ? "ON" : "OFF")}");
+            }
+            curY += 40f;
+
+            // Catalog pickers for Extra Fun's slots (6, 7) — Fun handles 1..5.
+            if (catalogOpenSlot == 6 || catalogOpenSlot == 7)
+                curY = DrawCatalogPicker(curY, pad, innerW);
+
+            if (GUI.Button(new Rect(pad, curY, innerW, 32), "Close", closeButtonStyle))
+                showExtraFunWindow = false;
+            curY += 40f;
+
+            extraFunWindowRect.height = curY + 10f;
+            GUI.DragWindow(new Rect(0, 0, winWidth, 30));
+        }
+
+        /// <summary>
+        /// Renders the shared catalog dropdown for whatever slot is currently
+        /// open (caller is responsible for gating). Returns the curY below
+        /// the rendered block. Factored out so both Fun and Extra Fun can
+        /// host their owned slots without duplicating the filter+list logic.
+        /// </summary>
+        private static float DrawCatalogPicker(float curY, float pad, float innerW)
+        {
+            System.Collections.Generic.Dictionary<string, ItemCatalog.ItemEntry> bucket;
+            System.Action<string> onSelect;
+            string slotLabel;
+            switch (catalogOpenSlot)
+            {
+                case 1: bucket = ItemCatalog.Helms;    onSelect = s => helmSpoofInput   = s; slotLabel = "Helm";    break;
+                case 2: bucket = ItemCatalog.Armors;   onSelect = s => armorSpoofInput  = s; slotLabel = "Armor";   break;
+                case 3: bucket = ItemCatalog.Backs;    onSelect = s => backSpoofInput   = s; slotLabel = "Cape";    break;
+                case 4: bucket = ItemCatalog.Weapons;  onSelect = s => weaponSpoofInput = s; slotLabel = "Weapon";  break;
+                case 5: bucket = ItemCatalog.Pets;     onSelect = s => petSpoofInput    = s; slotLabel = "Pet";     break;
+                case 6: bucket = ItemCatalog.Monsters; onSelect = s => petSpoofInput       = s; slotLabel = "Monster (Pet)";       break;
+                case 7: bucket = ItemCatalog.Monsters; onSelect = s => monTransformInput   = s; slotLabel = "Monster (Transform)"; break;
+                default: return curY;
+            }
+
+            GUI.Label(new Rect(pad, curY, innerW, 20),
+                $"{slotLabel} Catalog ({bucket.Count}) — filter:", labelStyle);
+            curY += 22f;
+
+            float clearBtnW = 90f;
+            float filterW = innerW - clearBtnW - 6f;
+            catalogFilter = GUI.TextField(new Rect(pad, curY, filterW, 28), catalogFilter, textFieldStyle);
+
+            bool armed = catalogClearArmedSlot == catalogOpenSlot
+                      && Time.realtimeSinceStartup - catalogClearArmedTime < 3f;
+            string clearLabel = armed ? "Confirm?" : "Clear";
+            if (GUI.Button(new Rect(pad + filterW + 6f, curY, clearBtnW, 28), clearLabel, closeButtonStyle))
+            {
+                if (armed)
+                {
+                    switch (catalogOpenSlot)
+                    {
+                        case 1: ItemCatalog.ClearHelms();    break;
+                        case 2: ItemCatalog.ClearArmors();   break;
+                        case 3: ItemCatalog.ClearBacks();    break;
+                        case 4: ItemCatalog.ClearWeapons();  break;
+                        case 5: ItemCatalog.ClearPets();     break;
+                        case 6: ItemCatalog.ClearMonsters(); break;
+                        case 7: ItemCatalog.ClearMonsters(); break;
+                    }
+                    catalogClearArmedSlot = 0;
+                    catalogScroll = Vector2.zero;
+                }
+                else
+                {
+                    catalogClearArmedSlot = catalogOpenSlot;
+                    catalogClearArmedTime = Time.realtimeSinceStartup;
+                }
+            }
+            curY += 32f;
+
+            string filt = catalogFilter?.ToLowerInvariant() ?? "";
+            var matches = new System.Collections.Generic.List<ItemCatalog.ItemEntry>();
+            foreach (var e in bucket.Values)
+            {
+                string display = !string.IsNullOrEmpty(e.name) ? e.name : ItemCatalog.ParseFriendlyName(e.bundle);
+                if (filt.Length == 0
+                    || (display?.ToLowerInvariant().Contains(filt) ?? false)
+                    || (e.bundle?.ToLowerInvariant().Contains(filt) ?? false))
+                    matches.Add(e);
+            }
+            matches.Sort((a, b) =>
+            {
+                string an = !string.IsNullOrEmpty(a.name) ? a.name : ItemCatalog.ParseFriendlyName(a.bundle);
+                string bn = !string.IsNullOrEmpty(b.name) ? b.name : ItemCatalog.ParseFriendlyName(b.bundle);
+                return string.Compare(an, bn, System.StringComparison.OrdinalIgnoreCase);
+            });
+
+            float listH = 180f;
+            GUI.Box(new Rect(pad, curY, innerW, listH), "", GUI.skin.box);
+            float rowH = 22f;
+            float contentH = System.Math.Max(listH - 8, matches.Count * rowH + 4);
+            catalogScroll = GUI.BeginScrollView(
+                new Rect(pad, curY, innerW, listH),
+                catalogScroll,
+                new Rect(0, 0, innerW - 20, contentH));
+            for (int i = 0; i < matches.Count; i++)
+            {
+                var e = matches[i];
+                string display = !string.IsNullOrEmpty(e.name)
+                    ? e.name
+                    : ItemCatalog.ParseFriendlyName(e.bundle);
+                if (GUI.Button(new Rect(2, 2 + i * rowH, innerW - 28, rowH - 2), "  " + display, rowButtonStyle))
+                {
+                    onSelect?.Invoke(e.bundle);
+                    GUI.FocusControl(null);
+                    GUIUtility.keyboardControl = 0;
+                }
+            }
+            GUI.EndScrollView();
+            curY += listH + 10f;
+            return curY;
         }
 
         /// <summary>
@@ -2091,23 +2351,26 @@ namespace Infinity_TestMod
             input = GUI.TextField(new Rect(pad, curY, innerW, 30), input, textFieldStyle);
             curY += 35f;
 
-            // Three buttons in a row: Apply / Clear / Browse-toggle.
+            // Three buttons in a row: Apply / Clear / Browse-toggle. Labels
+            // are intentionally generic — the section label above already
+            // names the slot, so repeating it would overflow on long names
+            // (e.g. "Monster→Pet", "Become Monster").
             float btnW = (innerW - 20) / 3f;
-            string applyText = active ? $"Update {slotName}" : $"Apply {slotName}";
+            string applyText = active ? "Update" : "Apply";
             string browseText = (catalogOpenSlot == slotKey) ? "Hide ▲" : "Browse ▼";
 
             if (playerExists)
             {
                 if (GUI.Button(new Rect(pad, curY, btnW, 30), applyText, closeButtonStyle))
                     apply?.Invoke(input);
-                if (GUI.Button(new Rect(pad + btnW + 10, curY, btnW, 30), $"Clear {slotName}", closeButtonStyle))
+                if (GUI.Button(new Rect(pad + btnW + 10, curY, btnW, 30), "Clear", closeButtonStyle))
                     clear?.Invoke();
             }
             else
             {
                 GUI.enabled = false;
                 GUI.Button(new Rect(pad, curY, btnW, 30), applyText, closeButtonStyle);
-                GUI.Button(new Rect(pad + btnW + 10, curY, btnW, 30), $"Clear {slotName}", closeButtonStyle);
+                GUI.Button(new Rect(pad + btnW + 10, curY, btnW, 30), "Clear", closeButtonStyle);
                 GUI.enabled = true;
             }
             if (GUI.Button(new Rect(pad + (btnW + 10) * 2, curY, btnW, 30), browseText, closeButtonStyle))
@@ -2157,6 +2420,150 @@ namespace Infinity_TestMod
             => ApplyGearSpoof("Cape", desiredBundle, v => backSpoofBundle = v, v => backSpoofActive = v, v => backSpoofInput = v);
         private static void ClearBackSpoof()
             => ClearGearSpoof("Cape", v => backSpoofBundle = v, v => backSpoofActive = v);
+
+        // Weapon spoof: bundle swap + temporary PrefabName/ItemType mutation
+        // on Entity.mainPlayer.Weapon. Requires a catalog entry for the
+        // target bundle since we can't synthesize PrefabName/ItemType without
+        // having seen the weapon on some character. Originals are stashed
+        // by WeaponSpoofState and restored on Clear.
+        private static void ApplyWeaponSpoof(string desiredBundle)
+        {
+            if (Entity.mainPlayer == null) return;
+            desiredBundle = (desiredBundle ?? "").Trim();
+            if (desiredBundle.Length == 0)
+            {
+                ClearWeaponSpoof();
+                return;
+            }
+            if (Entity.mainPlayer.Weapon == null)
+            {
+                MelonLogger.Warning("[WeaponSpoof] no weapon equipped — equip one before spoofing.");
+                return;
+            }
+            if (!ItemCatalog.Weapons.TryGetValue(desiredBundle, out var cat))
+            {
+                MelonLogger.Warning($"[WeaponSpoof] '{desiredBundle}' not in catalog. See it on a character first so PrefabName/ItemType can be captured.");
+                return;
+            }
+
+            weaponSpoofActive = true;
+            weaponSpoofBundle = desiredBundle;
+            weaponSpoofInput = desiredBundle;
+            WeaponSpoofState.Apply(Entity.mainPlayer.Weapon, cat.prefab, (iType)cat.itemType);
+            try { Entity.mainPlayer.createAvatar(); } catch { }
+            MelonLogger.Msg($"[WeaponSpoof] applied bundle '{desiredBundle}' (prefab={cat.prefab}, type={(iType)cat.itemType}).");
+        }
+
+        private static void ClearWeaponSpoof()
+        {
+            weaponSpoofActive = false;
+            weaponSpoofBundle = "";
+            WeaponSpoofState.Restore();
+            try { Entity.mainPlayer?.createAvatar(); } catch { }
+            MelonLogger.Msg("[WeaponSpoof] cleared.");
+        }
+
+        // Pet spoof: full field swap on Entity.mainPlayer.Pet (Bundle,
+        // PrefabName, Scale, OffsetX, OffsetY). PetLoader.LoadItem reads
+        // those directly into BundlePrefabLoader — no GetBundleData detour
+        // — so the postfix path used by gear loaders doesn't apply here.
+        // Catalog-required: scale/offsets can't be synthesized.
+        private static void ApplyPetSpoof(string desiredBundle)
+        {
+            if (Entity.mainPlayer == null) return;
+            desiredBundle = (desiredBundle ?? "").Trim();
+            if (desiredBundle.Length == 0)
+            {
+                ClearPetSpoof();
+                return;
+            }
+            if (Entity.mainPlayer.Pet == null)
+            {
+                MelonLogger.Warning("[PetSpoof] no pet equipped — equip one before spoofing.");
+                return;
+            }
+            if (!ItemCatalog.TryGetPetOrMonster(desiredBundle, out var cat))
+            {
+                MelonLogger.Warning($"[PetSpoof] '{desiredBundle}' not in Pets or Monsters catalog. See it in-world first so PrefabName/Scale can be captured.");
+                return;
+            }
+
+            petSpoofActive = true;
+            petSpoofBundle = desiredBundle;
+            petSpoofInput = desiredBundle;
+            var sourceBucket = ItemCatalog.Pets.ContainsKey(desiredBundle)
+                ? ItemCatalog.Pets : ItemCatalog.Monsters;
+            var spoofedBundle = SpoofBundleBuilder.Build(desiredBundle, sourceBucket, Entity.mainPlayer.Pet.Bundle, Entity.mainPlayer.Pet.Bundle);
+            PetSpoofState.Apply(Entity.mainPlayer.Pet, spoofedBundle, cat.prefab, cat.scale, cat.offX, cat.offY);
+            // Use the game's own re-equip-pet path. createAvatar doesn't help
+            // because loadAllEquip only constructs a PetLoader when petGO is
+            // null, and DestroyAsset leaves petGO alive (it's parented to the
+            // entity container, not avtGO). Entity.EquipItem(Pet) destroys
+            // petGO and calls BundlePrefabLoader.Load directly from the
+            // (now mutated) EquipItem fields.
+            try { Entity.mainPlayer.EquipItem(Entity.mainPlayer.Pet); } catch { }
+            MelonLogger.Msg($"[PetSpoof] applied bundle '{desiredBundle}' (prefab={cat.prefab}).");
+        }
+
+        private static void ClearPetSpoof()
+        {
+            petSpoofActive = false;
+            petSpoofBundle = "";
+            PetSpoofState.Restore();
+            try
+            {
+                if (Entity.mainPlayer?.Pet != null)
+                    Entity.mainPlayer.EquipItem(Entity.mainPlayer.Pet);
+            }
+            catch { }
+            MelonLogger.Msg("[PetSpoof] cleared.");
+        }
+
+        // Monster-transform spoof: piggybacks on the game's transform-potion
+        // path (Entity.ApplyMonTransform). Needs the bundle, linkage (prefab
+        // name) and scale from the Monsters catalog. Auto-reverts on Combat
+        // state — Entity.currentState calls RemoveMonTransform when value
+        // becomes Combat. That's the game's rule; we don't fight it.
+        private static void ApplyMonTransformSpoof(string desiredBundle)
+        {
+            if (Entity.mainPlayer == null) return;
+            desiredBundle = (desiredBundle ?? "").Trim();
+            if (desiredBundle.Length == 0)
+            {
+                ClearMonTransformSpoof();
+                return;
+            }
+            if (!ItemCatalog.Monsters.TryGetValue(desiredBundle, out var cat))
+            {
+                MelonLogger.Warning($"[MonTransform] '{desiredBundle}' not in Monsters catalog. See the monster in-world first.");
+                return;
+            }
+
+            float scale = (float)(cat.scale ?? 1.0);
+            if (scale <= 0f) scale = 1f;
+            var bundle = SpoofBundleBuilder.Build(desiredBundle, ItemCatalog.Monsters, null, null);
+
+            try
+            {
+                Entity.mainPlayer.ApplyMonTransform(bundle, cat.prefab, scale);
+                monTransformActive = true;
+                monTransformBundle = desiredBundle;
+                monTransformInput = desiredBundle;
+                MelonLogger.Msg($"[MonTransform] applied '{desiredBundle}' (prefab={cat.prefab}, scale={scale}). Reverts on combat.");
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Error($"[MonTransform] apply failed: {ex.Message}");
+            }
+        }
+
+        private static void ClearMonTransformSpoof()
+        {
+            monTransformActive = false;
+            monTransformBundle = "";
+            try { Entity.mainPlayer?.RemoveMonTransform(); } catch { }
+            MelonLogger.Msg("[MonTransform] cleared.");
+        }
 
         private static void ApplyGearSpoof(string label, string desiredBundle,
                                            System.Action<string> setBundle,

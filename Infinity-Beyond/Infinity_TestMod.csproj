@@ -109,6 +109,18 @@
       <HintPath>$(AqwiGameDir)\AdventureQuest Worlds Infinity_Data\Managed\Newtonsoft.Json.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="UnityEngine.AnimationModule">
+      <HintPath>$(AqwiGameDir)\AdventureQuest Worlds Infinity_Data\Managed\UnityEngine.AnimationModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine.AudioModule">
+      <HintPath>$(AqwiGameDir)\AdventureQuest Worlds Infinity_Data\Managed\UnityEngine.AudioModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine.DirectorModule">
+      <HintPath>$(AqwiGameDir)\AdventureQuest Worlds Infinity_Data\Managed\UnityEngine.DirectorModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>$(AqwiGameDir)\AdventureQuest Worlds Infinity_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
       <Private>False</Private>
