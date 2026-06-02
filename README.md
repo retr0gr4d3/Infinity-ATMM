@@ -27,4 +27,4 @@ Feel free to open pull requests and contribute.
 
 # Credits & Team
 - [@SharpTheNightmare](https://github.com/SharpTheNightmare)
-- [@Drathaxie](https://github.com/drathaxie) / Claude
+- [@Drathaxie](https://github.com/drathaxie)
