@@ -13,9 +13,73 @@ namespace Infinity_TestMod
 {
     public class TestMod : MelonMod
     {
+        public static TestMod Instance { get; private set; }
+
         public static bool showWindow = false;
         public static Rect windowRect = new(20, 100, 300, 610);
         public static readonly Rect ToggleButtonRect = new(10, 20, 64, 64);
+
+        // Customisable UI Theme Variables
+        public static bool showCustomiseWindow = false;
+        public static Rect customiseWindowRect = new(330, 100, 360, 640);
+
+        // Colors
+        public static Color windowBgColor = new(0.07f, 0.07f, 0.07f, 0.9f);
+        public static Color windowBorderColor = new(0.17f, 0.17f, 0.17f, 1f);
+        public static Color buttonBgColor = new(0.12f, 0.12f, 0.12f, 1f);
+        public static Color buttonBorderColor = new(0.2f, 0.2f, 0.2f, 1f);
+        public static Color buttonHoverBorderColor = new(0.4f, 0.4f, 0.4f, 1f);
+        public static Color textFieldBgColor = new(0.05f, 0.05f, 0.05f, 1f);
+        public static Color textFieldBorderColor = new(0.15f, 0.15f, 0.15f, 1f);
+        public static Color boxBgColor = new(0.03f, 0.03f, 0.03f, 0.95f);
+        public static Color boxBorderColor = new(0.12f, 0.12f, 0.12f, 1f);
+        public static Color textColor = new(0.9f, 0.9f, 0.9f, 1f);
+        public static Color accentColor = Color.white;
+        public static Color separatorColor = new(0.2f, 0.2f, 0.2f, 1f);
+
+        // Fonts
+        public static string selectedFontName = "Default";
+        public static Font customFont = null;
+        public static int fontSizeOffset = 0; // global font size offset
+        public static FontStyle globalFontStyle = FontStyle.Normal;
+
+        // Color Picker State
+        public enum ThemeColorElement
+        {
+            WindowBackground,
+            WindowBorder,
+            ButtonBackground,
+            ButtonBorder,
+            ButtonHoverBorder,
+            TextFieldBackground,
+            TextFieldBorder,
+            BoxBackground,
+            BoxBorder,
+            TextColor,
+            AccentColor,
+            SeparatorColor
+        }
+
+        public static ThemeColorElement selectedColorElement = ThemeColorElement.WindowBackground;
+        private static string hexInputText = "121212E5"; // Initialized on start or element change
+        private static Texture2D previewColorTexture;
+
+        // Windows-Style Color Picker State
+        public static bool showColorPickerWindow = false;
+        public static Rect colorPickerWindowRect = new(700, 100, 360, 480);
+        private static Color originalColor = Color.white;
+
+        private static float pickerH = 0f;
+        private static float pickerS = 0f;
+        private static float pickerL = 0.5f;
+        private static string hInputText = "0";
+        private static string sInputText = "0";
+        private static string lInputText = "120";
+        private static string rInputText = "255";
+        private static string gInputText = "255";
+        private static string bInputText = "255";
+        private static Texture2D colorMapTexture;
+        private static Texture2D lightnessBarTexture;
 
         public static bool forceMergeShop = false;
         private static string shopIdInput = "";
@@ -237,9 +301,12 @@ namespace Infinity_TestMod
         private static Texture2D buttonBgTexture;
         private static Texture2D buttonBgHoverTexture;
         private static Texture2D separatorTexture;
+        private static Texture2D textFieldBgTexture;
+        private static Texture2D boxBgTexture;
 
         private static GUIStyle buttonStyle;
         private static GUIStyle windowStyle;
+        private static GUIStyle boxStyle;
         private static GUIStyle closeButtonStyle;
         private static GUIStyle labelStyle;
         private static GUIStyle textFieldStyle;
@@ -247,6 +314,8 @@ namespace Infinity_TestMod
 
         public override void OnInitializeMelon()
         {
+            Instance = this;
+
             LoggerInstance.Msg("Alpha Testing Mod Menu Initialized successfully!");
             PacketLog.Init();
             Directory.Init();
@@ -263,6 +332,7 @@ namespace Infinity_TestMod
             harmony.PatchAll();
             LoggerInstance.Msg("Harmony patches applied!");
             GenerateTextures();
+            OnSelectedElementChanged();
         }
 
         public override void OnApplicationQuit()
@@ -528,20 +598,35 @@ namespace Infinity_TestMod
         {
             try
             {
-                Color defaultBorder = new(0.08f, 0.08f, 0.08f, 1f);
-                Color hoverBorder = Color.white;
+                // Use customizable button border colors for the activation button
+                Color activationDefaultBorder = buttonBorderColor;
+                Color activationHoverBorder = buttonHoverBorderColor;
 
-                buttonTexture = CreateThemedButtonTexture(defaultBorder);
-                buttonHoverTexture = CreateThemedButtonTexture(hoverBorder);
+                buttonTexture = CreateThemedButtonTexture(activationDefaultBorder);
+                buttonHoverTexture = CreateThemedButtonTexture(activationHoverBorder);
 
                 windowTexture = CreateThemedWindowTexture();
 
-                buttonBgTexture = CreateThemedButtonBgTexture(defaultBorder);
-                buttonBgHoverTexture = CreateThemedButtonBgTexture(hoverBorder);
+                buttonBgTexture = CreateThemedButtonBgTexture(buttonBorderColor);
+                buttonBgHoverTexture = CreateThemedButtonBgTexture(buttonHoverBorderColor);
 
-                 separatorTexture = new Texture2D(1, 1);
-                 separatorTexture.SetPixel(0, 0, new Color(0.08f, 0.08f, 0.08f, 1f));
-                 separatorTexture.Apply();
+                textFieldBgTexture = CreateThemedTextFieldTexture(textFieldBorderColor);
+
+                boxBgTexture = CreateThemedBoxTexture(boxBorderColor);
+
+                if (separatorTexture == null)
+                {
+                    separatorTexture = new Texture2D(1, 1);
+                }
+                separatorTexture.SetPixel(0, 0, separatorColor);
+                separatorTexture.Apply();
+
+                if (previewColorTexture == null)
+                {
+                    previewColorTexture = new Texture2D(1, 1);
+                }
+                previewColorTexture.SetPixel(0, 0, GetColorForElement(selectedColorElement));
+                previewColorTexture.Apply();
 
                 LoggerInstance.Msg("Generated UI textures.");
             }
@@ -553,79 +638,114 @@ namespace Infinity_TestMod
 
         public override void OnGUI()
         {
-            if (buttonTexture != null && buttonHoverTexture != null && buttonStyle == null)
+            // Always initialize/update styles in-place to avoid NullReferenceException in UnityEngine.TextEditor
+            if (buttonStyle == null) buttonStyle = new GUIStyle();
+            if (buttonTexture != null && buttonHoverTexture != null)
             {
-                buttonStyle = new GUIStyle();
                 buttonStyle.normal.background = buttonTexture;
                 buttonStyle.hover.background = buttonHoverTexture;
                 buttonStyle.active.background = buttonHoverTexture;
             }
 
-            if (windowTexture != null && windowStyle == null)
+            if (windowStyle == null)
             {
                 windowStyle = new GUIStyle();
-                windowStyle.normal.background = windowTexture;
-                windowStyle.border = new RectOffset(24, 24, 24, 24);
-                windowStyle.normal.textColor = Color.white;
+                windowStyle.border = new RectOffset(10, 10, 10, 10);
                 windowStyle.alignment = TextAnchor.UpperCenter;
-                windowStyle.fontStyle = FontStyle.Bold;
-                windowStyle.fontSize = 14;
                 windowStyle.padding = new RectOffset(0, 0, 12, 0);
             }
+            if (windowTexture != null) windowStyle.normal.background = windowTexture;
+            windowStyle.normal.textColor = accentColor;
+            windowStyle.fontStyle = (globalFontStyle == FontStyle.Normal) ? FontStyle.Bold : globalFontStyle;
+            windowStyle.fontSize = 14 + fontSizeOffset;
+            windowStyle.font = customFont;
 
-            if (buttonBgTexture != null && buttonBgHoverTexture != null && closeButtonStyle == null)
+            if (closeButtonStyle == null)
             {
                 closeButtonStyle = new GUIStyle();
+                closeButtonStyle.border = new RectOffset(6, 6, 6, 6);
+                closeButtonStyle.alignment = TextAnchor.MiddleCenter;
+            }
+            if (buttonBgTexture != null && buttonBgHoverTexture != null)
+            {
                 closeButtonStyle.normal.background = buttonBgTexture;
                 closeButtonStyle.hover.background = buttonBgHoverTexture;
                 closeButtonStyle.active.background = buttonBgHoverTexture;
-                closeButtonStyle.border = new RectOffset(12, 12, 12, 12);
-                closeButtonStyle.normal.textColor = new Color(0.9f, 0.9f, 0.9f, 1f);
-                closeButtonStyle.hover.textColor = Color.white;
-                closeButtonStyle.alignment = TextAnchor.MiddleCenter;
-                closeButtonStyle.fontStyle = FontStyle.Bold;
-                closeButtonStyle.fontSize = 12;
             }
+            closeButtonStyle.normal.textColor = textColor;
+            closeButtonStyle.hover.textColor = accentColor;
+            closeButtonStyle.fontStyle = (globalFontStyle == FontStyle.Normal) ? FontStyle.Bold : globalFontStyle;
+            closeButtonStyle.fontSize = 12 + fontSizeOffset;
+            closeButtonStyle.font = customFont;
 
             if (labelStyle == null)
             {
                 labelStyle = new GUIStyle();
-                labelStyle.normal.textColor = new Color(0.9f, 0.9f, 0.9f, 1f);
                 labelStyle.alignment = TextAnchor.MiddleCenter;
-                labelStyle.fontStyle = FontStyle.Normal;
-                labelStyle.fontSize = 13;
                 labelStyle.richText = true;
             }
+            labelStyle.normal.textColor = textColor;
+            labelStyle.fontStyle = globalFontStyle;
+            labelStyle.fontSize = 13 + fontSizeOffset;
+            labelStyle.font = customFont;
 
             if (logTextStyle == null)
             {
                 logTextStyle = new GUIStyle();
-                logTextStyle.normal.textColor = new Color(0.9f, 0.9f, 0.9f, 1f);
                 logTextStyle.alignment = TextAnchor.MiddleLeft;
-                logTextStyle.fontStyle = FontStyle.Normal;
-                logTextStyle.fontSize = 12;
                 logTextStyle.richText = true;
             }
+            logTextStyle.normal.textColor = textColor;
+            logTextStyle.fontStyle = globalFontStyle;
+            logTextStyle.fontSize = 12 + fontSizeOffset;
+            logTextStyle.font = customFont;
 
             if (textFieldStyle == null)
             {
                 textFieldStyle = new GUIStyle(GUI.skin.textField);
                 textFieldStyle.alignment = TextAnchor.MiddleCenter;
-                textFieldStyle.fontStyle = FontStyle.Normal;
-                textFieldStyle.fontSize = 13;
-                textFieldStyle.normal.textColor = Color.white;
-                textFieldStyle.focused.textColor = Color.white;
             }
+            if (textFieldBgTexture != null)
+            {
+                textFieldStyle.normal.background = textFieldBgTexture;
+                textFieldStyle.hover.background = textFieldBgTexture;
+                textFieldStyle.focused.background = textFieldBgTexture;
+                textFieldStyle.active.background = textFieldBgTexture;
+                textFieldStyle.border = new RectOffset(6, 6, 6, 6);
+            }
+            textFieldStyle.fontStyle = globalFontStyle;
+            textFieldStyle.fontSize = 13 + fontSizeOffset;
+            textFieldStyle.normal.textColor = textColor;
+            textFieldStyle.focused.textColor = accentColor;
+            textFieldStyle.font = customFont;
 
             if (rowButtonStyle == null)
             {
                 rowButtonStyle = new GUIStyle(GUI.skin.button);
                 rowButtonStyle.alignment = TextAnchor.MiddleLeft;
-                rowButtonStyle.fontStyle = FontStyle.Normal;
-                rowButtonStyle.fontSize = 12;
                 rowButtonStyle.richText = true;
-                rowButtonStyle.normal.textColor = new Color(0.9f, 0.9f, 0.9f, 1f);
-                rowButtonStyle.hover.textColor = Color.white;
+            }
+            if (buttonBgTexture != null && buttonBgHoverTexture != null)
+            {
+                rowButtonStyle.normal.background = buttonBgTexture;
+                rowButtonStyle.hover.background = buttonBgHoverTexture;
+                rowButtonStyle.active.background = buttonBgHoverTexture;
+                rowButtonStyle.border = new RectOffset(6, 6, 6, 6);
+            }
+            rowButtonStyle.fontStyle = globalFontStyle;
+            rowButtonStyle.fontSize = 12 + fontSizeOffset;
+            rowButtonStyle.normal.textColor = textColor;
+            rowButtonStyle.hover.textColor = accentColor;
+            rowButtonStyle.font = customFont;
+
+            if (boxStyle == null)
+            {
+                boxStyle = new GUIStyle(GUI.skin.box);
+            }
+            if (boxBgTexture != null)
+            {
+                boxStyle.normal.background = boxBgTexture;
+                boxStyle.border = new RectOffset(6, 6, 6, 6);
             }
 
             if (previewTextStyle == null)
@@ -633,9 +753,10 @@ namespace Infinity_TestMod
                 previewTextStyle = new GUIStyle(GUI.skin.textArea);
                 previewTextStyle.wordWrap = false;
                 previewTextStyle.richText = false;
-                previewTextStyle.fontSize = 12;
-                previewTextStyle.normal.textColor = Color.white;
             }
+            previewTextStyle.fontSize = 12 + fontSizeOffset;
+            previewTextStyle.normal.textColor = textColor;
+            previewTextStyle.font = customFont;
 
             if (buttonStyle != null)
             {
@@ -805,6 +926,30 @@ namespace Infinity_TestMod
                 else
                 {
                     retroTestsWindowRect = GUI.Window(9988, retroTestsWindowRect, DrawRetroTestsWindow, "Retro Tests");
+                }
+            }
+
+            if (showWindow && showCustomiseWindow)
+            {
+                if (windowStyle != null)
+                {
+                    customiseWindowRect = GUI.Window(9986, customiseWindowRect, DrawCustomiseWindow, "UI Customisation", windowStyle);
+                }
+                else
+                {
+                    customiseWindowRect = GUI.Window(9986, customiseWindowRect, DrawCustomiseWindow, "UI Customisation");
+                }
+            }
+
+            if (showWindow && showColorPickerWindow)
+            {
+                if (windowStyle != null)
+                {
+                    colorPickerWindowRect = GUI.Window(9985, colorPickerWindowRect, DrawColorPickerWindow, "Color Picker", windowStyle);
+                }
+                else
+                {
+                    colorPickerWindowRect = GUI.Window(9985, colorPickerWindowRect, DrawColorPickerWindow, "Color Picker");
                 }
             }
         }
@@ -1047,6 +1192,28 @@ namespace Infinity_TestMod
             {
                 showRetroTestsWindow = !showRetroTestsWindow;
             }
+            curY += 35f;
+
+            if (separatorTexture != null)
+            {
+                curY += 6f;
+                GUI.DrawTexture(new Rect(20, curY, 260, 2), separatorTexture);
+                curY += 2f + 6f;
+            }
+            else
+            {
+                curY += 10f;
+            }
+
+            // Section 8: Customisation
+            GUI.Label(new Rect(20, curY, 260, 20), "<b>Customisation</b>", labelStyle);
+            curY += 22f;
+
+            string customiseBtnText = showCustomiseWindow ? "Hide Customise" : "Customise UI";
+            if (GUI.Button(new Rect(20, curY, 260, 35), customiseBtnText, closeButtonStyle))
+            {
+                showCustomiseWindow = !showCustomiseWindow;
+            }
             curY += 35f + 10f;
 
             if (closeButtonStyle != null)
@@ -1068,6 +1235,557 @@ namespace Infinity_TestMod
             windowRect.height = curY + 20f;
 
             GUI.DragWindow(new Rect(0, 0, windowRect.width, 30));
+        }
+
+        private static Vector2 customiseScroll = Vector2.zero;
+
+        private void DrawCustomiseWindow(int windowID)
+        {
+            float curY = 35f;
+            float pad = 20f;
+            float innerW = customiseWindowRect.width - pad * 2f;
+
+            GUI.Label(new Rect(pad, curY, innerW, 20), "<b>UI Customisation Options</b>", labelStyle);
+            curY += 25f;
+
+            // 1. Element Selector (List of Buttons)
+            GUI.Label(new Rect(pad, curY, innerW, 20), "<b>Theme Color Elements:</b>", labelStyle);
+            curY += 22f;
+
+            string[] elementNames = {
+                "Window BG", "Window Border",
+                "Button BG", "Button Border", "Btn Hover Border",
+                "Text Field BG", "Text Field Border",
+                "Box BG", "Box Border",
+                "Text Color", "Accent Color", "Separator Color"
+            };
+
+            // Scrollable list for elements to save window height
+            Rect scrollRect = new Rect(pad, curY, innerW, 160f);
+            Rect viewRect = new Rect(0, 0, innerW - 20f, 12 * 30f);
+            customiseScroll = GUI.BeginScrollView(scrollRect, customiseScroll, viewRect);
+
+            for (int i = 0; i < 12; i++)
+            {
+                ThemeColorElement elem = (ThemeColorElement)i;
+                float rowY = i * 30f;
+                
+                // Use logTextStyle for left-aligned element names
+                GUI.Label(new Rect(0, rowY, 130, 25), elementNames[i], logTextStyle);
+
+                // Draw a nice border around the color swatch
+                GUI.Box(new Rect(140, rowY + 2, 22, 22), "", boxStyle);
+
+                // Draw the solid color swatch
+                GUI.color = GetColorForElement(elem);
+                GUI.DrawTexture(new Rect(141, rowY + 3, 20, 20), Texture2D.whiteTexture);
+                GUI.color = Color.white; // Reset tint color
+
+                // Standard, untinted "Edit Color" button that is perfectly consistent with the rest of the UI
+                if (GUI.Button(new Rect(175f, rowY, 105f, 25), "Edit Color", closeButtonStyle))
+                {
+                    selectedColorElement = elem;
+                    originalColor = GetColorForElement(elem);
+                    OnSelectedElementChanged();
+                    showColorPickerWindow = true;
+                }
+            }
+            GUI.EndScrollView();
+
+            curY += 165f;
+
+            if (separatorTexture != null)
+            {
+                GUI.DrawTexture(new Rect(pad, curY, innerW, 2), separatorTexture);
+                curY += 8f;
+            }
+
+            // 2. Fonts Section
+            GUI.Label(new Rect(pad, curY, innerW, 20), "<b>Font Customisation:</b>", labelStyle);
+            curY += 22f;
+
+            GUI.Label(new Rect(pad, curY, 80, 20), "Font Name:", labelStyle);
+            string newFontName = GUI.TextField(new Rect(pad + 85f, curY, innerW - 85f, 22f), selectedFontName, textFieldStyle);
+            if (newFontName != selectedFontName)
+            {
+                ApplyFont(newFontName);
+            }
+            curY += 26f;
+
+            string[] commonFonts = { "Default", "Arial", "Courier New", "Consolas" };
+            float fontBtnW = (innerW - 12f) / 4f;
+            for (int i = 0; i < commonFonts.Length; i++)
+            {
+                float fx = pad + i * (fontBtnW + 4f);
+                if (GUI.Button(new Rect(fx, curY, fontBtnW, 22f), commonFonts[i], closeButtonStyle))
+                {
+                    ApplyFont(commonFonts[i]);
+                }
+            }
+            curY += 28f;
+
+            GUI.Label(new Rect(pad, curY, innerW, 18), $"Font Size Offset: {(fontSizeOffset >= 0 ? "+" : "")}{fontSizeOffset}", labelStyle);
+            float newOffsetFloat = GUI.HorizontalSlider(new Rect(pad, curY + 16f, innerW, 12), fontSizeOffset, -4f, 8f);
+            int newOffset = Mathf.RoundToInt(newOffsetFloat);
+            if (newOffset != fontSizeOffset)
+            {
+                fontSizeOffset = newOffset;
+                ResetStyles();
+            }
+            curY += 32f;
+
+            GUI.Label(new Rect(pad, curY, innerW, 18), "Font Style:", labelStyle);
+            curY += 20f;
+
+            string[] fontStyleNames = { "Normal", "Bold", "Italic", "BoldAndItalic" };
+            int selectedStyleIndex = (int)globalFontStyle;
+            selectedStyleIndex = GUI.SelectionGrid(new Rect(pad, curY, innerW, 44f), selectedStyleIndex, fontStyleNames, 2, rowButtonStyle);
+            if (selectedStyleIndex != (int)globalFontStyle)
+            {
+                globalFontStyle = (FontStyle)selectedStyleIndex;
+                ResetStyles();
+            }
+            curY += 48f;
+
+            if (separatorTexture != null)
+            {
+                GUI.DrawTexture(new Rect(pad, curY, innerW, 2), separatorTexture);
+                curY += 8f;
+            }
+
+            // 3. Reset & Close Buttons
+            if (GUI.Button(new Rect(pad, curY, innerW, 30f), "Reset to Default Theme", closeButtonStyle))
+            {
+                windowBgColor = new Color(0.07f, 0.07f, 0.07f, 0.9f);
+                windowBorderColor = new Color(0.17f, 0.17f, 0.17f, 1f);
+                buttonBgColor = new Color(0.12f, 0.12f, 0.12f, 1f);
+                buttonBorderColor = new Color(0.2f, 0.2f, 0.2f, 1f);
+                buttonHoverBorderColor = new Color(0.4f, 0.4f, 0.4f, 1f);
+                textFieldBgColor = new Color(0.05f, 0.05f, 0.05f, 1f);
+                textFieldBorderColor = new Color(0.15f, 0.15f, 0.15f, 1f);
+                boxBgColor = new Color(0.03f, 0.03f, 0.03f, 0.95f);
+                boxBorderColor = new Color(0.12f, 0.12f, 0.12f, 1f);
+                textColor = new Color(0.9f, 0.9f, 0.9f, 1f);
+                accentColor = Color.white;
+                separatorColor = new Color(0.2f, 0.2f, 0.2f, 1f);
+
+                selectedFontName = "Default";
+                customFont = null;
+                fontSizeOffset = 0;
+                globalFontStyle = FontStyle.Normal;
+
+                OnSelectedElementChanged();
+                GenerateTextures();
+                ResetStyles();
+            }
+            curY += 34f;
+
+            if (GUI.Button(new Rect(pad, curY, innerW, 30f), "Close", closeButtonStyle))
+            {
+                showCustomiseWindow = false;
+            }
+            curY += 34f;
+
+            customiseWindowRect.height = curY + 10f;
+            GUI.DragWindow(new Rect(0, 0, customiseWindowRect.width, 30));
+        }
+
+        private void DrawColorPickerWindow(int windowID)
+        {
+            float curY = 35f;
+            float pad = 20f;
+            float innerW = colorPickerWindowRect.width - pad * 2f;
+
+            string[] elementNames = {
+                "Window BG", "Window Border",
+                "Button BG", "Button Border", "Btn Hover Border",
+                "Text Field BG", "Text Field Border",
+                "Box BG", "Box Border",
+                "Text Color", "Accent Color", "Separator Color"
+            };
+
+            GUI.Label(new Rect(pad, curY, innerW, 20), $"<b>Color Picker: {elementNames[(int)selectedColorElement]}</b>", labelStyle);
+            curY += 25f;
+
+            // Ensure textures are initialized
+            if (colorMapTexture == null || lightnessBarTexture == null)
+            {
+                OnSelectedElementChanged();
+            }
+
+            // Center coordinates
+            // Map: 180 width, Lightness Bar: 20 width, Gap: 10 width, Arrow label: 12 width
+            // Total width of picker elements = 180 + 10 + 20 + 12 = 222
+            // To center it inside innerW:
+            float totalPickerW = 222f;
+            float startOffsetX = (innerW - totalPickerW) / 2f;
+
+            float mapX = pad + startOffsetX;
+            float mapY = curY;
+            float barX = mapX + 190f;
+            float barY = curY;
+            float arrowX = barX + 22f;
+
+            // Draw Hue-Saturation 2D Map (Draw border/bg first, then texture on top)
+            Rect mapRect = new Rect(mapX, mapY, 180, 180);
+            GUI.Box(new Rect(mapRect.x - 1, mapRect.y - 1, mapRect.width + 2, mapRect.height + 2), "", boxStyle);
+            if (colorMapTexture != null)
+            {
+                GUI.DrawTexture(mapRect, colorMapTexture);
+            }
+
+            // Handle mouse clicks/drags on 2D Map
+            if (Event.current.type == EventType.MouseDown || Event.current.type == EventType.MouseDrag)
+            {
+                if (mapRect.Contains(Event.current.mousePosition))
+                {
+                    float mouseX = Event.current.mousePosition.x;
+                    float mouseY = Event.current.mousePosition.y;
+                    pickerH = Mathf.Clamp01((mouseX - mapRect.x) / mapRect.width);
+                    pickerS = Mathf.Clamp01(1f - (mouseY - mapRect.y) / mapRect.height);
+                    
+                    UpdateColorFromPicker();
+                    Event.current.Use();
+                }
+            }
+
+            // Draw custom crosshair/cursor at current H, S
+            float cx = mapRect.x + pickerH * mapRect.width;
+            float cy = mapRect.y + (1f - pickerS) * mapRect.height;
+            GUI.DrawTexture(new Rect(cx - 3, cy - 3, 6, 6), Texture2D.blackTexture);
+            GUI.DrawTexture(new Rect(cx - 2, cy - 2, 4, 4), Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(cx - 1, cy - 1, 2, 2), Texture2D.blackTexture);
+
+            // Draw Lightness Vertical Bar (Draw border/bg first, then texture on top)
+            Rect barRect = new Rect(barX, barY, 20, 180);
+            GUI.Box(new Rect(barRect.x - 1, barRect.y - 1, barRect.width + 2, barRect.height + 2), "", boxStyle);
+            if (lightnessBarTexture != null)
+            {
+                GUI.DrawTexture(barRect, lightnessBarTexture);
+            }
+
+            // Handle mouse clicks/drags on Lightness Bar
+            if (Event.current.type == EventType.MouseDown || Event.current.type == EventType.MouseDrag)
+            {
+                if (barRect.Contains(Event.current.mousePosition))
+                {
+                    float mouseY = Event.current.mousePosition.y;
+                    pickerL = Mathf.Clamp01(1f - (mouseY - barRect.y) / barRect.height);
+                    
+                    UpdateColorFromPicker();
+                    Event.current.Use();
+                }
+            }
+
+            // Draw Arrow pointer at current L
+            float ay = barRect.y + (1f - pickerL) * barRect.height;
+            GUI.Label(new Rect(arrowX, ay - 8, 12, 16), "◀", labelStyle);
+
+            curY += 190f;
+
+            // Color Preview & Inputs Section
+            // Center the bottom layout elements based on mapX
+            float previewX = mapX + 10f;
+            float inputCol1X = previewX + 80f;
+            float inputCol2X = previewX + 155f;
+
+            // Draw Color Preview Box (Draw border/bg first, then texture on top)
+            Rect previewRect = new Rect(previewX, curY, 60, 25);
+            GUI.Box(new Rect(previewRect.x - 1, previewRect.y - 1, previewRect.width + 2, previewRect.height + 2), "", boxStyle);
+            if (previewColorTexture != null)
+            {
+                GUI.DrawTexture(previewRect, previewColorTexture);
+            }
+
+            // Draw Hex Input below preview
+            GUI.Label(new Rect(previewX, curY + 28f, 60, 15), "Hex Code", labelStyle);
+            string newHex = GUI.TextField(new Rect(previewX, curY + 44f, 60, 20), hexInputText, textFieldStyle);
+            if (newHex != hexInputText)
+            {
+                hexInputText = newHex;
+                if (hexInputText.Length == 6 || hexInputText.Length == 8)
+                {
+                    if (HexToColor(hexInputText, out Color parsedCol))
+                    {
+                        Color currentCol = GetColorForElement(selectedColorElement);
+                        if (parsedCol != currentCol)
+                        {
+                            UpdateColorFromRGB(parsedCol);
+                        }
+                    }
+                }
+            }
+
+            // H, S, L values (0-240)
+            int hVal = Mathf.RoundToInt(pickerH * 240f);
+            int sVal = Mathf.RoundToInt(pickerS * 240f);
+            int lVal = Mathf.RoundToInt(pickerL * 240f);
+
+            // R, G, B values (0-255)
+            Color col = GetColorForElement(selectedColorElement);
+            int rVal = Mathf.RoundToInt(col.r * 255f);
+            int gVal = Mathf.RoundToInt(col.g * 255f);
+            int bVal = Mathf.RoundToInt(col.b * 255f);
+
+            float labelW = 15f;
+            float fieldW = 40f;
+
+            // Row 1: H & R
+            GUI.Label(new Rect(inputCol1X, curY, labelW, 20), "H", labelStyle);
+            string hStr = GUI.TextField(new Rect(inputCol1X + labelW, curY, fieldW, 20), hInputText, textFieldStyle);
+
+            GUI.Label(new Rect(inputCol2X, curY, labelW, 20), "R", labelStyle);
+            string rStr = GUI.TextField(new Rect(inputCol2X + labelW, curY, fieldW, 20), rInputText, textFieldStyle);
+
+            // Row 2: S & G
+            GUI.Label(new Rect(inputCol1X, curY + 24f, labelW, 20), "S", labelStyle);
+            string sStr = GUI.TextField(new Rect(inputCol1X + labelW, curY + 24f, fieldW, 20), sInputText, textFieldStyle);
+
+            GUI.Label(new Rect(inputCol2X, curY + 24f, labelW, 20), "G", labelStyle);
+            string gStr = GUI.TextField(new Rect(inputCol2X + labelW, curY + 24f, fieldW, 20), gInputText, textFieldStyle);
+
+            // Row 3: L & B
+            GUI.Label(new Rect(inputCol1X, curY + 48f, labelW, 20), "L", labelStyle);
+            string lStr = GUI.TextField(new Rect(inputCol1X + labelW, curY + 48f, fieldW, 20), lInputText, textFieldStyle);
+
+            GUI.Label(new Rect(inputCol2X, curY + 48f, labelW, 20), "B", labelStyle);
+            string bStr = GUI.TextField(new Rect(inputCol2X + labelW, curY + 48f, fieldW, 20), bInputText, textFieldStyle);
+
+            // Handle typed inputs
+            if (hStr != hInputText)
+            {
+                hInputText = hStr;
+                if (int.TryParse(hStr, out int newH))
+                {
+                    pickerH = Mathf.Clamp(newH, 0, 240) / 240f;
+                    UpdateColorFromPicker();
+                }
+            }
+            if (sStr != sInputText)
+            {
+                sInputText = sStr;
+                if (int.TryParse(sStr, out int newS))
+                {
+                    pickerS = Mathf.Clamp(newS, 0, 240) / 240f;
+                    UpdateColorFromPicker();
+                }
+            }
+            if (lStr != lInputText)
+            {
+                lInputText = lStr;
+                if (int.TryParse(lStr, out int newL))
+                {
+                    pickerL = Mathf.Clamp(newL, 0, 240) / 240f;
+                    UpdateColorFromPicker();
+                }
+            }
+
+            if (rStr != rInputText)
+            {
+                rInputText = rStr;
+                if (int.TryParse(rStr, out int newR))
+                {
+                    Color c = col;
+                    c.r = Mathf.Clamp(newR, 0, 255) / 255f;
+                    UpdateColorFromRGB(c);
+                }
+            }
+            if (gStr != gInputText)
+            {
+                gInputText = gStr;
+                if (int.TryParse(gStr, out int newG))
+                {
+                    Color c = col;
+                    c.g = Mathf.Clamp(newG, 0, 255) / 255f;
+                    UpdateColorFromRGB(c);
+                }
+            }
+            if (bStr != bInputText)
+            {
+                bInputText = bStr;
+                if (int.TryParse(bStr, out int newB))
+                {
+                    Color c = col;
+                    c.b = Mathf.Clamp(newB, 0, 255) / 255f;
+                    UpdateColorFromRGB(c);
+                }
+            }
+
+            curY += 78f;
+
+            // Preset Colors
+            Color[] presets = {
+                Color.red, Color.green, Color.blue, Color.yellow,
+                new Color(1f, 0.5f, 0f), new Color(0.5f, 0f, 0.5f), // Orange, Purple
+                Color.cyan, Color.magenta, Color.white, Color.gray,
+                new Color(0.15f, 0.15f, 0.15f), Color.black
+            };
+            string[] presetNames = {
+                "Red", "Green", "Blue", "Yellow",
+                "Orange", "Purple", "Cyan", "Magenta",
+                "White", "Gray", "Dark", "Black"
+            };
+
+            GUI.Label(new Rect(pad, curY, innerW, 20), "<b>Quick Presets:</b>", labelStyle);
+            curY += 22f;
+
+            float btnW = (innerW - 12f) / 4f;
+            for (int i = 0; i < presets.Length; i++)
+            {
+                float px = pad + (i % 4) * (btnW + 4f);
+                float py = curY + (i / 4) * 26f;
+                GUI.backgroundColor = presets[i];
+                if (GUI.Button(new Rect(px, py, btnW, 22f), presetNames[i], closeButtonStyle))
+                {
+                    UpdateColorFromRGB(presets[i]);
+                }
+            }
+            GUI.backgroundColor = Color.white; // Reset tint
+            curY += 26f * 3f + 10f;
+
+            if (separatorTexture != null)
+            {
+                GUI.DrawTexture(new Rect(pad, curY, innerW, 2), separatorTexture);
+                curY += 8f;
+            }
+
+            // OK and Cancel Buttons
+            float actionBtnW = (innerW - 10f) / 2f;
+            if (GUI.Button(new Rect(pad, curY, actionBtnW, 30f), "OK", closeButtonStyle))
+            {
+                showColorPickerWindow = false;
+            }
+
+            if (GUI.Button(new Rect(pad + actionBtnW + 10f, curY, actionBtnW, 30f), "Cancel", closeButtonStyle))
+            {
+                SetColorForElement(selectedColorElement, originalColor);
+                UpdateColorFromRGB(originalColor);
+                showColorPickerWindow = false;
+            }
+            curY += 35f;
+
+            colorPickerWindowRect.height = curY + 10f;
+            GUI.DragWindow(new Rect(0, 0, colorPickerWindowRect.width, 30));
+        }
+
+        public static void ResetStyles()
+        {
+            // Do nothing! Setting style variables to null causes NullReferenceExceptions
+            // in Unity's TextEditor when a text field currently has keyboard focus.
+            // Since OnGUI updates style properties in-place every frame, we do not need
+            // to destroy/recreate style objects.
+        }
+
+        public static string ColorToHex(Color color)
+        {
+            int r = Mathf.RoundToInt(Mathf.Clamp01(color.r) * 255f);
+            int g = Mathf.RoundToInt(Mathf.Clamp01(color.g) * 255f);
+            int b = Mathf.RoundToInt(Mathf.Clamp01(color.b) * 255f);
+            int a = Mathf.RoundToInt(Mathf.Clamp01(color.a) * 255f);
+            return $"{r:X2}{g:X2}{b:X2}{a:X2}";
+        }
+
+        public static bool HexToColor(string hex, out Color color)
+        {
+            color = Color.white;
+            if (string.IsNullOrEmpty(hex)) return false;
+
+            hex = hex.Trim().Replace("#", "");
+            if (hex.Length != 6 && hex.Length != 8) return false;
+
+            try
+            {
+                byte r = byte.Parse(hex.Substring(0, 2), System.Globalization.NumberStyles.HexNumber);
+                byte g = byte.Parse(hex.Substring(2, 2), System.Globalization.NumberStyles.HexNumber);
+                byte b = byte.Parse(hex.Substring(4, 2), System.Globalization.NumberStyles.HexNumber);
+                byte a = 255;
+                if (hex.Length == 8)
+                {
+                    a = byte.Parse(hex.Substring(6, 2), System.Globalization.NumberStyles.HexNumber);
+                }
+
+                color = new Color(r / 255f, g / 255f, b / 255f, a / 255f);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static Color GetColorForElement(ThemeColorElement element)
+        {
+            switch (element)
+            {
+                case ThemeColorElement.WindowBackground: return windowBgColor;
+                case ThemeColorElement.WindowBorder: return windowBorderColor;
+                case ThemeColorElement.ButtonBackground: return buttonBgColor;
+                case ThemeColorElement.ButtonBorder: return buttonBorderColor;
+                case ThemeColorElement.ButtonHoverBorder: return buttonHoverBorderColor;
+                case ThemeColorElement.TextFieldBackground: return textFieldBgColor;
+                case ThemeColorElement.TextFieldBorder: return textFieldBorderColor;
+                case ThemeColorElement.BoxBackground: return boxBgColor;
+                case ThemeColorElement.BoxBorder: return boxBorderColor;
+                case ThemeColorElement.TextColor: return textColor;
+                case ThemeColorElement.AccentColor: return accentColor;
+                case ThemeColorElement.SeparatorColor: return separatorColor;
+                default: return Color.white;
+            }
+        }
+
+        private static void SetColorForElement(ThemeColorElement element, Color col)
+        {
+            switch (element)
+            {
+                case ThemeColorElement.WindowBackground: windowBgColor = col; break;
+                case ThemeColorElement.WindowBorder: windowBorderColor = col; break;
+                case ThemeColorElement.ButtonBackground: buttonBgColor = col; break;
+                case ThemeColorElement.ButtonBorder: buttonBorderColor = col; break;
+                case ThemeColorElement.ButtonHoverBorder: buttonHoverBorderColor = col; break;
+                case ThemeColorElement.TextFieldBackground: textFieldBgColor = col; break;
+                case ThemeColorElement.TextFieldBorder: textFieldBorderColor = col; break;
+                case ThemeColorElement.BoxBackground: boxBgColor = col; break;
+                case ThemeColorElement.BoxBorder: boxBorderColor = col; break;
+                case ThemeColorElement.TextColor: textColor = col; break;
+                case ThemeColorElement.AccentColor: accentColor = col; break;
+                case ThemeColorElement.SeparatorColor: separatorColor = col; break;
+            }
+        }
+
+        private static void UpdatePreviewTexture(Color col)
+        {
+            if (previewColorTexture == null)
+            {
+                previewColorTexture = new Texture2D(1, 1);
+            }
+            previewColorTexture.SetPixel(0, 0, col);
+            previewColorTexture.Apply();
+        }
+
+        private static void ApplyFont(string fontName)
+        {
+            selectedFontName = fontName;
+            if (fontName == "Default" || string.IsNullOrEmpty(fontName))
+            {
+                customFont = null;
+            }
+            else
+            {
+                try
+                {
+                    customFont = Font.CreateDynamicFontFromOSFont(fontName, 13);
+                    if (customFont == null)
+                    {
+                        Instance?.LoggerInstance.Warning($"Font '{fontName}' could not be loaded from OS. Falling back to default.");
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    Instance?.LoggerInstance.Error($"Error loading font '{fontName}': {ex}");
+                    customFont = null;
+                }
+            }
+            ResetStyles();
         }
 
         private static string GetSkillKeyName(int slot)
@@ -1193,7 +1911,7 @@ namespace Infinity_TestMod
             curY += 20f;
 
             float scrollHeight = 90f;
-            GUI.Box(new Rect(pad, curY, innerW, scrollHeight), "", GUI.skin.box);
+            GUI.Box(new Rect(pad, curY, innerW, scrollHeight), "", boxStyle);
             
             float listHeight = Mathf.Max(scrollHeight - 10f, savedSkillsets.Count * 25f);
             retroSkillsetsScroll = GUI.BeginScrollView(
@@ -1208,7 +1926,7 @@ namespace Infinity_TestMod
                 string selectLabel = savedSkillsets[i].Name;
                 if (selectedSkillsetIndex == i)
                 {
-                    GUI.Box(new Rect(2, itemY, innerW - 24, 22), "");
+                    GUI.Box(new Rect(2, itemY, innerW - 24, 22), "", boxStyle);
                     selectLabel = "▶ " + selectLabel;
                 }
 
@@ -1814,7 +2532,7 @@ namespace Infinity_TestMod
                 LoggerInstance.Msg("Packet log cleared.");
             }
 
-            GUI.Box(new Rect(pad, 115, innerW, 180), "", GUI.skin.box);
+            GUI.Box(new Rect(pad, 115, innerW, 180), "", boxStyle);
 
             float intContentHeight = 170f;
             lock (interceptedPacketsLog)
@@ -1896,7 +2614,7 @@ namespace Infinity_TestMod
                 LoggerInstance.Msg("Sniffer log cleared.");
             }
 
-            GUI.Box(new Rect(pad, 80, innerW, 220), "", GUI.skin.box);
+            GUI.Box(new Rect(pad, 80, innerW, 220), "", boxStyle);
 
             float sniffContentHeight = 210f;
             lock (snifferLog)
@@ -1917,7 +2635,7 @@ namespace Infinity_TestMod
                     float yPos = 5 + i * 26;
                     if (selectedSniffIndex == i)
                     {
-                        GUI.Box(new Rect(5, yPos, innerW - 90, 22), "");
+                        GUI.Box(new Rect(5, yPos, innerW - 90, 22), "", boxStyle);
                     }
 
                     if (GUI.Button(new Rect(5, yPos, innerW - 90, 22), snifferLog[i].DisplayText, rowButtonStyle))
@@ -2603,7 +3321,7 @@ namespace Infinity_TestMod
             });
 
             float listH = 180f;
-            GUI.Box(new Rect(pad, curY, innerW, listH), "", GUI.skin.box);
+            GUI.Box(new Rect(pad, curY, innerW, listH), "", boxStyle);
             float rowH = 22f;
             float contentH = System.Math.Max(listH - 8, matches.Count * rowH + 4);
             catalogScroll = GUI.BeginScrollView(
@@ -3209,7 +3927,7 @@ namespace Infinity_TestMod
 
             // Row 5: event log
             float logY = 295;
-            GUI.Box(new Rect(pad, logY, innerW, 75), "", GUI.skin.box);
+            GUI.Box(new Rect(pad, logY, innerW, 75), "", boxStyle);
             float logH;
             lock (questRunnerLog) { logH = System.Math.Max(65f, questRunnerLog.Count * 16f); }
             questRunnerLogScroll = GUI.BeginScrollView(
@@ -3279,7 +3997,7 @@ namespace Infinity_TestMod
                 // Positioned just below the two input rows.
                 float pickerY = 125;
                 float pickerH = 290;
-                GUI.Box(new Rect(pad - 2, pickerY - 2, innerW + 4, pickerH + 4), "");
+                GUI.Box(new Rect(pad - 2, pickerY - 2, innerW + 4, pickerH + 4), "", boxStyle);
                 GUI.Label(new Rect(pad, pickerY + 5, 70, 25), "Filter:", labelStyle);
                 questPickerFilter = GUI.TextField(new Rect(pad + 60, pickerY, 260, 35), questPickerFilter, textFieldStyle);
                 GUI.Label(new Rect(pad + 330, pickerY + 5, 200, 25),
@@ -3390,6 +4108,16 @@ namespace Infinity_TestMod
                 return true;
             }
 
+            if (showWindow && showCustomiseWindow && customiseWindowRect.Contains(imguiMousePos))
+            {
+                return true;
+            }
+
+            if (showWindow && showColorPickerWindow && colorPickerWindowRect.Contains(imguiMousePos))
+            {
+                return true;
+            }
+
             return false;
         }
 
@@ -3491,11 +4219,14 @@ namespace Infinity_TestMod
             return tex;
         }
 
-        private static Texture2D CreateThemedWindowTexture()
+        private static Texture2D CreateRoundedTexture(int size, float radius, Color bgCol, Color borderCol)
         {
-            int size = 128;
             Texture2D tex = new(size, size, TextureFormat.RGBA32, false);
             Color[] pixels = new Color[size * size];
+
+            float half = size / 2.0f;
+            float innerW = half - 1.0f;
+            float innerH = half - 1.0f;
 
             for (int y = 0; y < size; y++)
             {
@@ -3503,38 +4234,38 @@ namespace Infinity_TestMod
                 {
                     int index = y * size + x;
 
-                    float px = x - 64f;
-                    float py = y - 64f;
+                    float px = x - half + 0.5f;
+                    float py = y - half + 0.5f;
 
-                    Vector2 pBox = new(Mathf.Abs(px) - 58f + 18f, Mathf.Abs(py) - 58f + 18f);
-                    float boxDist = Mathf.Min(Mathf.Max(pBox.x, pBox.y), 0.0f) + new Vector2(Mathf.Max(pBox.x, 0.0f), Mathf.Max(pBox.y, 0.0f)).magnitude - 18f;
+                    float dx = Mathf.Abs(px) - innerW + radius;
+                    float dy = Mathf.Abs(py) - innerH + radius;
 
-                    if (boxDist > 0f)
+                    float dist = Mathf.Min(Mathf.Max(dx, dy), 0.0f) + new Vector2(Mathf.Max(dx, 0.0f), Mathf.Max(dy, 0.0f)).magnitude - radius;
+
+                    if (dist > 0.5f)
                     {
                         pixels[index] = Color.clear;
-                        continue;
                     }
-
-                    Color c;
-
-                    if (boxDist > -4f)
+                    else if (dist > -0.5f)
                     {
-                        c = new Color(0.08f, 0.08f, 0.08f, 1f);
+                        float t = Mathf.Clamp01(dist + 0.5f);
+                        Color c = borderCol;
+                        c.a *= (1f - t);
+                        pixels[index] = c;
+                    }
+                    else if (dist > -1.5f)
+                    {
+                        pixels[index] = borderCol;
+                    }
+                    else if (dist > -2.5f)
+                    {
+                        float t = Mathf.Clamp01(dist + 2.5f);
+                        pixels[index] = Color.Lerp(bgCol, borderCol, t);
                     }
                     else
                     {
-                        float tBg = (y - 4f) / 120f;
-                        Color topBg = new(0.35f, 0.35f, 0.35f, 1f);
-                        Color bottomBg = new(0.12f, 0.12f, 0.12f, 1f);
-                        c = Color.Lerp(bottomBg, topBg, tBg);
-
-                        if (y > 96)
-                        {
-                            c += new Color(0.08f, 0.08f, 0.08f, 0f);
-                        }
+                        pixels[index] = bgCol;
                     }
-
-                    pixels[index] = c;
                 }
             }
 
@@ -3543,56 +4274,191 @@ namespace Infinity_TestMod
             return tex;
         }
 
+        private static Texture2D CreateThemedWindowTexture()
+        {
+            return CreateRoundedTexture(32, 6f, windowBgColor, windowBorderColor);
+        }
+
         private static Texture2D CreateThemedButtonBgTexture(Color borderColor)
         {
-            int size = 64;
-            Texture2D tex = new(size, size, TextureFormat.RGBA32, false);
-            Color[] pixels = new Color[size * size];
+            return CreateRoundedTexture(32, 4f, buttonBgColor, borderColor);
+        }
 
-            for (int y = 0; y < size; y++)
+        private static Texture2D CreateThemedTextFieldTexture(Color borderColor)
+        {
+            return CreateRoundedTexture(32, 4f, textFieldBgColor, borderColor);
+        }
+
+        private static Texture2D CreateThemedBoxTexture(Color borderColor)
+        {
+            return CreateRoundedTexture(32, 4f, boxBgColor, borderColor);
+        }
+
+        // HSL <-> RGB Windows Color Picker Helpers
+        public static Color HSLToRGB(float h, float s, float l)
+        {
+            if (s == 0f)
             {
-                for (int x = 0; x < size; x++)
-                {
-                    int index = (y * size) + x;
-
-                    float px = x - 32f;
-                    float py = y - 32f;
-
-                    Vector2 pBox = new(Mathf.Abs(px) - 28f + 10f, Mathf.Abs(py) - 28f + 10f);
-                    float boxDist = Mathf.Min(Mathf.Max(pBox.x, pBox.y), 0.0f) + new Vector2(Mathf.Max(pBox.x, 0.0f), Mathf.Max(pBox.y, 0.0f)).magnitude - 10f;
-
-                    if (boxDist > 0f)
-                    {
-                        pixels[index] = Color.clear;
-                        continue;
-                    }
-
-                    Color c;
-
-                    if (boxDist > -2f)
-                    {
-                        c = borderColor;
-                    }
-                    else
-                    {
-                        float tBg = (y - 2f) / 60f;
-                        Color topBg = new(0.35f, 0.35f, 0.35f, 1f);
-                        Color bottomBg = new(0.12f, 0.12f, 0.12f, 1f);
-                        c = Color.Lerp(bottomBg, topBg, tBg);
-
-                        if (y > 48)
-                        {
-                            c += new Color(0.08f, 0.08f, 0.08f, 0f);
-                        }
-                    }
-
-                    pixels[index] = c;
-                }
+                return new Color(l, l, l, 1f);
             }
 
-            tex.SetPixels(pixels);
-            tex.Apply();
-            return tex;
+            float q = l < 0.5f ? l * (1f + s) : l + s - l * s;
+            float p = 2f * l - q;
+
+            float r = HueToRGB(p, q, h + 1f / 3f);
+            float g = HueToRGB(p, q, h);
+            float b = HueToRGB(p, q, h - 1f / 3f);
+
+            return new Color(r, g, b, 1f);
+        }
+
+        private static float HueToRGB(float p, float q, float t)
+        {
+            if (t < 0f) t += 1f;
+            if (t > 1f) t -= 1f;
+            if (t < 1f / 6f) return p + (q - p) * 6f * t;
+            if (t < 1f / 2f) return q;
+            if (t < 2f / 3f) return p + (q - p) * (2f / 3f - t) * 6f;
+            return p;
+        }
+
+        public static void RGBToHSL(Color color, out float h, out float s, out float l)
+        {
+            float r = color.r;
+            float g = color.g;
+            float b = color.b;
+
+            float min = Mathf.Min(r, Mathf.Min(g, b));
+            float max = Mathf.Max(r, Mathf.Max(g, b));
+            float delta = max - min;
+
+            l = (max + min) / 2f;
+
+            if (delta == 0f)
+            {
+                h = 0f;
+                s = 0f;
+            }
+            else
+            {
+                s = l > 0.5f ? delta / (2f - max - min) : delta / (max + min);
+
+                if (r == max)
+                {
+                    h = (g - b) / delta + (g < b ? 6f : 0f);
+                }
+                else if (g == max)
+                {
+                    h = (b - r) / delta + 2f;
+                }
+                else
+                {
+                    h = (r - g) / delta + 4f;
+                }
+
+                h /= 6f;
+            }
+        }
+
+        private static void RegenerateColorMapTexture()
+        {
+            if (colorMapTexture == null)
+            {
+                colorMapTexture = new Texture2D(128, 128, TextureFormat.RGBA32, false);
+            }
+            Color[] pixels = new Color[128 * 128];
+            for (int y = 0; y < 128; y++)
+            {
+                float s = y / 127f;
+                for (int x = 0; x < 128; x++)
+                {
+                    float h = x / 127f;
+                    // Use a constant lightness of 0.5f so the 2D map is always perfectly bright, vibrant, and universal
+                    pixels[y * 128 + x] = HSLToRGB(h, s, 0.5f);
+                }
+            }
+            colorMapTexture.SetPixels(pixels);
+            colorMapTexture.Apply();
+        }
+
+        private static void RegenerateLightnessBarTexture()
+        {
+            if (lightnessBarTexture == null)
+            {
+                lightnessBarTexture = new Texture2D(16, 128, TextureFormat.RGBA32, false);
+            }
+            Color[] pixels = new Color[16 * 128];
+            for (int y = 0; y < 128; y++)
+            {
+                float l = y / 127f;
+                Color col = HSLToRGB(pickerH, pickerS, l);
+                for (int x = 0; x < 16; x++)
+                {
+                    pixels[y * 16 + x] = col;
+                }
+            }
+            lightnessBarTexture.SetPixels(pixels);
+            lightnessBarTexture.Apply();
+        }
+
+        private static void OnSelectedElementChanged()
+        {
+            Color col = GetColorForElement(selectedColorElement);
+            RGBToHSL(col, out pickerH, out pickerS, out pickerL);
+            RegenerateColorMapTexture();
+            RegenerateLightnessBarTexture();
+            hexInputText = ColorToHex(col);
+            UpdatePreviewTexture(col);
+
+            hInputText = Mathf.RoundToInt(pickerH * 240f).ToString();
+            sInputText = Mathf.RoundToInt(pickerS * 240f).ToString();
+            lInputText = Mathf.RoundToInt(pickerL * 240f).ToString();
+            rInputText = Mathf.RoundToInt(col.r * 255f).ToString();
+            gInputText = Mathf.RoundToInt(col.g * 255f).ToString();
+            bInputText = Mathf.RoundToInt(col.b * 255f).ToString();
+        }
+
+        private static void UpdateColorFromPicker()
+        {
+            Color newCol = HSLToRGB(pickerH, pickerS, pickerL);
+            // Preserve Alpha
+            Color currentCol = GetColorForElement(selectedColorElement);
+            newCol.a = currentCol.a;
+            
+            SetColorForElement(selectedColorElement, newCol);
+            hexInputText = ColorToHex(newCol);
+            UpdatePreviewTexture(newCol);
+            RegenerateLightnessBarTexture();
+            Instance?.GenerateTextures();
+            ResetStyles();
+
+            hInputText = Mathf.RoundToInt(pickerH * 240f).ToString();
+            sInputText = Mathf.RoundToInt(pickerS * 240f).ToString();
+            lInputText = Mathf.RoundToInt(pickerL * 240f).ToString();
+            rInputText = Mathf.RoundToInt(newCol.r * 255f).ToString();
+            gInputText = Mathf.RoundToInt(newCol.g * 255f).ToString();
+            bInputText = Mathf.RoundToInt(newCol.b * 255f).ToString();
+        }
+
+        private static void UpdateColorFromRGB(Color newCol)
+        {
+            SetColorForElement(selectedColorElement, newCol);
+            RGBToHSL(newCol, out pickerH, out pickerS, out pickerL);
+            hexInputText = ColorToHex(newCol);
+            UpdatePreviewTexture(newCol);
+            // Color map is universal (constant 0.5f lightness), so we only need to regenerate it if it's null,
+            // but let's regenerate it just in case on initialization/element change.
+            RegenerateColorMapTexture();
+            RegenerateLightnessBarTexture();
+            Instance?.GenerateTextures();
+            ResetStyles();
+
+            hInputText = Mathf.RoundToInt(pickerH * 240f).ToString();
+            sInputText = Mathf.RoundToInt(pickerS * 240f).ToString();
+            lInputText = Mathf.RoundToInt(pickerL * 240f).ToString();
+            rInputText = Mathf.RoundToInt(newCol.r * 255f).ToString();
+            gInputText = Mathf.RoundToInt(newCol.g * 255f).ToString();
+            bInputText = Mathf.RoundToInt(newCol.b * 255f).ToString();
         }
 
         private static float DistanceToLineSegment(Vector2 p, Vector2 a, Vector2 b)
