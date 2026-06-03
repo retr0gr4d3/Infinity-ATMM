@@ -10,3 +10,4 @@ obj/
 *.dll
 *.pdb
 buildtomods.bat
+AGENTS.md
