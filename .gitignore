@@ -11,3 +11,4 @@ obj/
 *.pdb
 buildtomods.bat
 AGENTS.md
+/build
