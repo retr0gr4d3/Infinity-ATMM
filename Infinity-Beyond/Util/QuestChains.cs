@@ -99,7 +99,7 @@ namespace Infinity_TestMod.Util
                         area = (string)e["area"] ?? "",
                         frame = (string)e["frame"] ?? "",
                         pad = string.IsNullOrEmpty((string)e["pad"]) ? "Spawn" : (string)e["pad"],
-                        items = Math.Max(1, (int?)e["items"] ?? 1),
+                        items = Math.Max(1, (int?)e["items"] ?? (int?)e["iters"] ?? 1),
                     });
                 }
                 if (entries.Count > 0)
