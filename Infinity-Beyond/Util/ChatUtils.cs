@@ -14,12 +14,7 @@
 
         public static void SendChatAndLog(string msg, string msg2 = "", string msg3 = "", string name = "Cheat", string channel = "Admin")
         {
-            ResponseChat.ChatUpdate(new ResponseChat(string.Concat(
-            [
-                msg,
-                msg2,
-                msg3,
-            ]), name, channel));
+            SendChat(msg, msg2, msg3, name, channel);
             MelonLoader.MelonLogger.Msg($"[ChatLog] {name} ({channel}): {string.Concat([msg, msg2, msg3])}");
         }
     }
