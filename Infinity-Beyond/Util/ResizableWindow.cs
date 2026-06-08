@@ -1,244 +1,196 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 namespace Infinity_TestMod.Util
 {
     public static class ResizableWindow
     {
-        private enum HandleKind
-        {
-            None,
-            TopLeft,
-            Top,
-            TopRight,
-            Right,
-            BottomRight,
-            Bottom,
-            BottomLeft,
-            Left
-        }
-
-        private const float DefaultMinWidth = 150f;
-        private const float DefaultMinHeight = 100f;
-        private const float DefaultGripSize = 6f;
-        private const float VisualGripSize = 16f;
-        private const float GripThickness = 2f;
-        private const float CornerSize = 12f; // Diagonal hit zone at corners
-        private const float TitleBarHeight = 20f; // Reserve top area for window drag
+        private const float CornerSize = 12f;
 
         private static int _resizingId = -1;
         private static int _activeControlId = 0;
-        private static HandleKind _handle = HandleKind.None;
-        private static Vector2 _dragStart = Vector2.zero;
-        private static Rect _rectAtStart = new();
-        private static readonly System.Collections.Generic.HashSet<int> _userResized = new();
+        private static float _newWidthAfterDrag = -1f;
+        private static float _dragStartMouseX = 0f;
+        private static float _dragStartWidth = 0f;
+        private static readonly HashSet<int> _userResized = new();
 
-        /// <summary>True once the user has dragged a resize handle on this window. Auto-sizing draw
-        /// code should skip overwriting height/width after this returns true.</summary>
+        private static readonly Dictionary<int, float> _baseWidths = new();
+        private static readonly Dictionary<int, float> _baseHeights = new();
+
+        private static Vector2 _parentMousePosition = Vector2.zero;
+
         public static bool WasManuallyResized(int windowId) => _userResized.Contains(windowId);
 
-        /// <summary>Returns a title-bar drag rect with corners excluded so resize hit-zones win.</summary>
         public static Rect TitleBarDragRect(float windowWidth, float titleHeight = 30f)
         {
             float inset = CornerSize;
-            return new Rect(inset, 0, Mathf.Max(0f, windowWidth - inset * 2f), titleHeight);
+            // Exclude the rightmost 28 pixels to ensure the drag rect does not overlap the resize button
+            return new Rect(inset, 0, Mathf.Max(0f, windowWidth - inset - 28f), titleHeight);
         }
 
+        // Deprecated: kept as no-ops to avoid compilation errors
+        public static float BeginScaling(int windowId, Rect currentRect, float defaultWidth) => 1.0f;
+        public static void EndScaling() {}
+
         public static Rect HandleResize(int windowId, Rect windowRect)
-            => HandleResize(windowId, windowRect, DefaultMinWidth, DefaultMinHeight, DefaultGripSize);
-
-        public static Rect HandleResize(int windowId, Rect windowRect, float minWidth, float minHeight, float gripSize)
         {
-            Event evt = Event.current;
-            if (evt == null) return windowRect;
-
-            Vector2 mouse = evt.mousePosition;
-            minWidth = Mathf.Max(1f, minWidth);
-            minHeight = Mathf.Max(1f, minHeight);
-            gripSize = Mathf.Max(1f, gripSize);
-
-            HandleKind hit = GetHandleAt(mouse, windowRect, gripSize);
-            UpdateCursor(windowId, hit, evt);
-
-            if (evt.type == EventType.MouseDown && hit != HandleKind.None && _resizingId == -1)
-            {
-                _resizingId = windowId;
-                _activeControlId = GUIUtility.GetControlID(FocusType.Passive);
-                _handle = hit;
-                _dragStart = mouse;
-                _rectAtStart = windowRect;
-                GUIUtility.hotControl = _activeControlId;
-                evt.Use();
-                return windowRect;
-            }
-
-            if (evt.type == EventType.MouseDrag && _resizingId == windowId)
-            {
-                Rect r = ResizeFromMouse(_rectAtStart, mouse, _dragStart, _handle, minWidth, minHeight);
-                _userResized.Add(windowId);
-                evt.Use();
-                return r;
-            }
-            if (evt.type == EventType.MouseUp && _resizingId == windowId)
-            {
-                int activeControlId = _activeControlId;
-                _resizingId = -1;
-                _activeControlId = 0;
-                _handle = HandleKind.None;
-                if (GUIUtility.hotControl == activeControlId)
-                {
-                    GUIUtility.hotControl = 0;
-                }
-                evt.Use();
-            }
-
+            // Now a no-op since resizing is handled by the top-right drag button
             return windowRect;
         }
 
-        private static HandleKind GetHandleAt(Vector2 mouse, Rect windowRect, float gripSize)
+        public static Rect DrawScaledWindow(int id, Rect screenRect, float baseWidth, GUI.WindowFunction func, string title, GUIStyle style = null)
         {
-            // Bail if mouse is outside the window entirely
-            if (mouse.x < windowRect.x - gripSize || mouse.x > windowRect.xMax + gripSize ||
-                mouse.y < windowRect.y - gripSize || mouse.y > windowRect.yMax + gripSize)
-                return HandleKind.None;
+            // Position clamping to keep the window on screen and rescue off-screen windows
+            screenRect.x = Mathf.Clamp(screenRect.x, 10f, Mathf.Max(10f, Screen.width - 100f));
+            screenRect.y = Mathf.Clamp(screenRect.y, 10f, Mathf.Max(10f, Screen.height - 50f));
 
-            bool onLeft = mouse.x >= windowRect.x - gripSize && mouse.x <= windowRect.x + gripSize;
-            bool onRight = mouse.x >= windowRect.xMax - gripSize && mouse.x <= windowRect.xMax + gripSize;
-            bool onTop = mouse.y >= windowRect.y - gripSize && mouse.y <= windowRect.y + gripSize;
-            bool onBottom = mouse.y >= windowRect.yMax - gripSize && mouse.y <= windowRect.yMax + gripSize;
+            // Recover manually resized state if width was modified (e.g. state preserved during hot-reload)
+            if (Mathf.Abs(screenRect.width - baseWidth) > 0.01f)
+            {
+                _userResized.Add(id);
+                _baseWidths[id] = baseWidth;
+                if (!_baseHeights.ContainsKey(id))
+                {
+                    float currentScale = screenRect.width / baseWidth;
+                    _baseHeights[id] = screenRect.height / currentScale;
+                }
+            }
 
-            // Larger corner zones (Windows-style): within CornerSize of a corner
-            bool nearLeft = mouse.x <= windowRect.x + CornerSize;
-            bool nearRight = mouse.x >= windowRect.xMax - CornerSize;
-            bool nearTop = mouse.y <= windowRect.y + CornerSize;
-            bool nearBottom = mouse.y >= windowRect.yMax - CornerSize;
+            // Capture parent-space mouse coordinates BEFORE changing GUI.matrix
+            Event evt = Event.current;
+            if (evt != null)
+            {
+                _parentMousePosition = evt.mousePosition;
 
-            // Corners take priority
-            if (onBottom && nearLeft) return HandleKind.BottomLeft;
-            if (onBottom && nearRight) return HandleKind.BottomRight;
-            if (onTop && nearLeft) return HandleKind.TopLeft;
-            if (onTop && nearRight) return HandleKind.TopRight;
-            if (onLeft && nearBottom) return HandleKind.BottomLeft;
-            if (onRight && nearBottom) return HandleKind.BottomRight;
-            if (onLeft && nearTop) return HandleKind.TopLeft;
-            if (onRight && nearTop) return HandleKind.TopRight;
+                // Global MouseUp detection in parent screen space. 
+                // This ensures dragging resets even if the cursor leaves the window.
+                if (evt.type == EventType.MouseUp)
+                {
+                    _resizingId = -1;
+                    _newWidthAfterDrag = -1f;
+                    if (GUIUtility.hotControl == _activeControlId)
+                    {
+                        GUIUtility.hotControl = 0;
+                    }
+                }
+            }
 
-            // Edges
-            if (onBottom) return HandleKind.Bottom;
-            if (onRight) return HandleKind.Right;
-            if (onLeft) return HandleKind.Left;
-            // Skip top edge — it conflicts with GUI.DragWindow title bar
+            // Track base dimensions if not manually resized
+            if (!WasManuallyResized(id))
+            {
+                _baseWidths[id] = baseWidth;
+                _baseHeights[id] = screenRect.height;
+            }
 
-            return HandleKind.None;
+            float baseW = _baseWidths.TryGetValue(id, out float bw) ? bw : baseWidth;
+            float scale = screenRect.width / baseW;
+
+            Matrix4x4 oldMat = GUI.matrix;
+            
+            // Set scaling matrix
+            GUI.matrix = oldMat * Matrix4x4.Scale(new Vector3(scale, scale, 1f));
+            
+            // Compute scaled rect for GUI.Window
+            Rect scaledRect = new Rect(screenRect.x / scale, screenRect.y / scale, baseW, screenRect.height / scale);
+            
+            Rect newScaledRect;
+            
+            // Wrapper callback to render content and draw the resize handle on top
+            GUI.WindowFunction wrapperFunc = (winId) =>
+            {
+                // Process resize events FIRST so we capture mouse clicks before GUI.DragWindow can consume them
+                HandleResizeEvents(winId, baseW, scale, screenRect);
+                
+                // Draw window contents
+                func(winId);
+                
+                // Draw the resize handle visually on top of everything
+                DrawResizeBoxVisual(baseW);
+            };
+
+            if (style != null)
+            {
+                newScaledRect = GUI.Window(id, scaledRect, wrapperFunc, title, style);
+            }
+            else
+            {
+                newScaledRect = GUI.Window(id, scaledRect, wrapperFunc, title);
+            }
+            
+            // Restore matrix
+            GUI.matrix = oldMat;
+            
+            // If currently drag-resizing this window, override the returned width and height
+            if (_resizingId == id && _newWidthAfterDrag > 0f)
+            {
+                float newW = _newWidthAfterDrag;
+                float baseH = _baseHeights.TryGetValue(id, out float bh) ? bh : screenRect.height;
+                float newH = newW * (baseH / baseW);
+                newScaledRect.width = newW / scale;
+                newScaledRect.height = newH / scale;
+            }
+
+            // Convert returned rect back to screen space
+            return new Rect(newScaledRect.x * scale, newScaledRect.y * scale, newScaledRect.width * scale, newScaledRect.height * scale);
         }
 
-        private static Rect ResizeFromMouse(Rect startRect, Vector2 mouse, Vector2 dragStart, HandleKind handle, float minWidth, float minHeight)
+        private static void HandleResizeEvents(int id, float baseW, float scale, Rect screenRect)
         {
-            Vector2 delta = mouse - dragStart;
-            Rect r = startRect;
-
-            switch (handle)
+            Event evt = Event.current;
+            if (evt != null)
             {
-                case HandleKind.BottomRight:
-                    r.width = Mathf.Max(minWidth, startRect.width + delta.x);
-                    r.height = Mathf.Max(minHeight, startRect.height + delta.y);
-                    break;
-
-                case HandleKind.BottomLeft:
-                    r.x = Mathf.Min(startRect.x + delta.x, startRect.xMax - minWidth);
-                    r.width = Mathf.Max(minWidth, startRect.width - delta.x);
-                    r.height = Mathf.Max(minHeight, startRect.height + delta.y);
-                    break;
-
-                case HandleKind.TopRight:
-                    r.height = Mathf.Max(minHeight, startRect.height - delta.y);
-                    r.y = startRect.yMax - r.height;
-                    r.width = Mathf.Max(minWidth, startRect.width + delta.x);
-                    break;
-
-                case HandleKind.TopLeft:
-                    r.height = Mathf.Max(minHeight, startRect.height - delta.y);
-                    r.y = startRect.yMax - r.height;
-                    r.x = Mathf.Min(startRect.x + delta.x, startRect.xMax - minWidth);
-                    r.width = Mathf.Max(minWidth, startRect.width - delta.x);
-                    break;
-
-                case HandleKind.Top:
-                    r.height = Mathf.Max(minHeight, startRect.height - delta.y);
-                    r.y = startRect.yMax - r.height;
-                    break;
-
-                case HandleKind.Right:
-                    r.width = Mathf.Max(minWidth, startRect.width + delta.x);
-                    break;
-
-                case HandleKind.Bottom:
-                    r.height = Mathf.Max(minHeight, startRect.height + delta.y);
-                    break;
-
-                case HandleKind.Left:
-                    r.x = Mathf.Min(startRect.x + delta.x, startRect.xMax - minWidth);
-                    r.width = Mathf.Max(minWidth, startRect.width - delta.x);
-                    break;
-            }
-
-            return r;
-        }
-
-        public static void DrawResizeHandles(Rect windowRect, Color color)
-        {
-        }
-
-        private static void UpdateCursor(int windowId, HandleKind hit, Event evt)
-        {
-            if (evt == null) return;
-
-            bool isDraggingThisWindow = _resizingId == windowId && _handle != HandleKind.None;
-            if (isDraggingThisWindow)
-            {
-                ApplyCursor(_handle);
-                return;
-            }
-
-            if (hit != HandleKind.None && (evt.type == EventType.MouseMove || evt.type == EventType.Repaint || evt.type == EventType.MouseDrag))
-            {
-                ApplyCursor(hit);
-                return;
-            }
-
-            if (evt.type == EventType.Repaint || evt.type == EventType.MouseMove)
-            {
-                NativeCursor.SetArrow();
+                Vector2 localMouse = evt.mousePosition;
+                Rect handleRect = new Rect(baseW - 24f, 4f, 20f, 20f);
+                
+                if (evt.type == EventType.MouseDown && handleRect.Contains(localMouse))
+                {
+                    _resizingId = id;
+                    _dragStartMouseX = _parentMousePosition.x;
+                    _dragStartWidth = screenRect.width;
+                    _newWidthAfterDrag = screenRect.width;
+                    _activeControlId = GUIUtility.GetControlID(FocusType.Passive);
+                    GUIUtility.hotControl = _activeControlId;
+                    evt.Use();
+                }
+                
+                if (_resizingId == id)
+                {
+                    if (evt.type == EventType.MouseDrag)
+                    {
+                        // Calculate change relative to initial mouse down point to prevent snapping on click
+                        float deltaX = _parentMousePosition.x - _dragStartMouseX;
+                        float newWidth = _dragStartWidth + deltaX;
+                        
+                        // Enforce reasonable minimum and maximum scaling sizes
+                        float minW = Mathf.Max(50f, baseW * 0.4f);
+                        float maxW = Mathf.Min(Screen.width, baseW * 3.0f);
+                        newWidth = Mathf.Clamp(newWidth, minW, maxW);
+                        
+                        _newWidthAfterDrag = newWidth;
+                        _userResized.Add(id);
+                        evt.Use();
+                    }
+                    else if (evt.type == EventType.MouseUp)
+                    {
+                        _resizingId = -1;
+                        _newWidthAfterDrag = -1f;
+                        if (GUIUtility.hotControl == _activeControlId)
+                        {
+                            GUIUtility.hotControl = 0;
+                        }
+                        evt.Use();
+                    }
+                }
             }
         }
 
-        private static void ApplyCursor(HandleKind handle)
+        private static void DrawResizeBoxVisual(float baseW)
         {
-            switch (handle)
-            {
-                case HandleKind.TopLeft:
-                case HandleKind.BottomRight:
-                    NativeCursor.SetNWSE();
-                    break;
-
-                case HandleKind.TopRight:
-                case HandleKind.BottomLeft:
-                    NativeCursor.SetNESW();
-                    break;
-
-                case HandleKind.Top:
-                case HandleKind.Bottom:
-                    NativeCursor.SetVertical();
-                    break;
-
-                case HandleKind.Left:
-                case HandleKind.Right:
-                    NativeCursor.SetHorizontal();
-                    break;
-
-                default:
-                    NativeCursor.SetArrow();
-                    break;
-            }
+            // Position the box in the top-right corner of the title bar
+            Rect handleRect = new Rect(baseW - 24f, 4f, 20f, 20f);
+            
+            // Draw a neat button with a diagonal resize symbol
+            GUI.Box(handleRect, "⤢", GUI.skin.button);
         }
     }
 }

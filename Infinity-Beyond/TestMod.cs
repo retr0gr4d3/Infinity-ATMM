@@ -811,192 +811,92 @@ namespace Infinity_TestMod
             // appear visibly.
             if (showWindow)
             {
-                if (windowStyle != null)
-                {
-                    windowRect = GUI.Window(9999, windowRect, DrawWindow, "Mod Menu", windowStyle);
-                }
-                else
-                {
-                    windowRect = GUI.Window(9999, windowRect, DrawWindow, "Mod Menu");
-                }
+                windowRect = ResizableWindow.DrawScaledWindow(9999, windowRect, 300f, DrawWindow, "Mod Menu", windowStyle);
                 windowRect = ResizableWindow.HandleResize(9999, windowRect);
             }
 
             if (showWindow && showConfigWindow)
             {
-                if (windowStyle != null)
-                {
-                    configWindowRect = GUI.Window(9998, configWindowRect, DrawConfigWindow, "Autoskills Config", windowStyle);
-                }
-                else
-                {
-                    configWindowRect = GUI.Window(9998, configWindowRect, DrawConfigWindow, "Autoskills Config");
-                }
+                configWindowRect = ResizableWindow.DrawScaledWindow(9998, configWindowRect, 320f, DrawConfigWindow, "Autoskills Config", windowStyle);
                 configWindowRect = ResizableWindow.HandleResize(9998, configWindowRect);
             }
 
             if (showWindow && showInterceptorWindow)
             {
-                if (windowStyle != null)
-                {
-                    interceptorWindowRect = GUI.Window(9997, interceptorWindowRect, DrawInterceptorWindow, "Packet Interceptor", windowStyle);
-                }
-                else
-                {
-                    interceptorWindowRect = GUI.Window(9997, interceptorWindowRect, DrawInterceptorWindow, "Packet Interceptor");
-                }
+                interceptorWindowRect = ResizableWindow.DrawScaledWindow(9997, interceptorWindowRect, 500f, DrawInterceptorWindow, "Packet Interceptor", windowStyle);
                 interceptorWindowRect = ResizableWindow.HandleResize(9997, interceptorWindowRect);
             }
 
             if (showWindow && showSnifferWindow)
             {
-                if (windowStyle != null)
-                {
-                    snifferWindowRect = GUI.Window(9996, snifferWindowRect, DrawSnifferWindow, "Packet Sniffer", windowStyle);
-                }
-                else
-                {
-                    snifferWindowRect = GUI.Window(9996, snifferWindowRect, DrawSnifferWindow, "Packet Sniffer");
-                }
+                snifferWindowRect = ResizableWindow.DrawScaledWindow(9996, snifferWindowRect, 500f, DrawSnifferWindow, "Packet Sniffer", windowStyle);
                 snifferWindowRect = ResizableWindow.HandleResize(9996, snifferWindowRect);
             }
 
             if (showWindow && showSenderWindow)
             {
-                if (windowStyle != null)
-                {
-                    senderWindowRect = GUI.Window(9995, senderWindowRect, DrawSenderWindow, "Packet Sender", windowStyle);
-                }
-                else
-                {
-                    senderWindowRect = GUI.Window(9995, senderWindowRect, DrawSenderWindow, "Packet Sender");
-                }
+                senderWindowRect = ResizableWindow.DrawScaledWindow(9995, senderWindowRect, 500f, DrawSenderWindow, "Packet Sender", windowStyle);
                 senderWindowRect = ResizableWindow.HandleResize(9995, senderWindowRect);
             }
 
             if (showWindow && showReceiverWindow)
             {
-                if (windowStyle != null)
-                {
-                    receiverWindowRect = GUI.Window(9994, receiverWindowRect, DrawReceiverWindow, "Packet Receiver", windowStyle);
-                }
-                else
-                {
-                    receiverWindowRect = GUI.Window(9994, receiverWindowRect, DrawReceiverWindow, "Packet Receiver");
-                }
+                receiverWindowRect = ResizableWindow.DrawScaledWindow(9994, receiverWindowRect, 500f, DrawReceiverWindow, "Packet Receiver", windowStyle);
                 receiverWindowRect = ResizableWindow.HandleResize(9994, receiverWindowRect);
             }
 
             if (showWindow && showFakeDevWindow)
             {
-                if (windowStyle != null)
-                {
-                    fakeDevWindowRect = GUI.Window(9992, fakeDevWindowRect, DrawFakeDevWindow, "FakeDev Settings", windowStyle);
-                }
-                else
-                {
-                    fakeDevWindowRect = GUI.Window(9992, fakeDevWindowRect, DrawFakeDevWindow, "FakeDev Settings");
-                }
+                fakeDevWindowRect = ResizableWindow.DrawScaledWindow(9992, fakeDevWindowRect, 320f, DrawFakeDevWindow, "FakeDev Settings", windowStyle);
                 fakeDevWindowRect = ResizableWindow.HandleResize(9992, fakeDevWindowRect);
             }
 
             if (showWindow && showShopLoaderWindow)
             {
-                if (windowStyle != null)
-                {
-                    shopLoaderWindowRect = GUI.Window(9991, shopLoaderWindowRect, DrawShopLoaderWindow, "Shop Loader", windowStyle);
-                }
-                else
-                {
-                    shopLoaderWindowRect = GUI.Window(9991, shopLoaderWindowRect, DrawShopLoaderWindow, "Shop Loader");
-                }
+                shopLoaderWindowRect = ResizableWindow.DrawScaledWindow(9991, shopLoaderWindowRect, 280f, DrawShopLoaderWindow, "Shop Loader", windowStyle);
                 shopLoaderWindowRect = ResizableWindow.HandleResize(9991, shopLoaderWindowRect);
             }
 
             if (showWindow && showQuestLoaderWindow)
             {
-                if (windowStyle != null)
-                {
-                    questLoaderWindowRect = GUI.Window(9990, questLoaderWindowRect, DrawQuestLoaderWindow, "Quest Loader", windowStyle);
-                }
-                else
-                {
-                    questLoaderWindowRect = GUI.Window(9990, questLoaderWindowRect, DrawQuestLoaderWindow, "Quest Loader");
-                }
+                questLoaderWindowRect = ResizableWindow.DrawScaledWindow(9990, questLoaderWindowRect, 280f, DrawQuestLoaderWindow, "Quest Loader", windowStyle);
                 questLoaderWindowRect = ResizableWindow.HandleResize(9990, questLoaderWindowRect);
             }
 
             if (showWindow && showQuestRunnerWindow)
             {
-                if (windowStyle != null)
-                {
-                    questRunnerWindowRect = GUI.Window(9993, questRunnerWindowRect, DrawQuestRunnerWindow, "Quest Runner", windowStyle);
-                }
-                else
-                {
-                    questRunnerWindowRect = GUI.Window(9993, questRunnerWindowRect, DrawQuestRunnerWindow, "Quest Runner");
-                }
+                questRunnerWindowRect = ResizableWindow.DrawScaledWindow(9993, questRunnerWindowRect, 640f, DrawQuestRunnerWindow, "Quest Runner", windowStyle);
                 questRunnerWindowRect = ResizableWindow.HandleResize(9993, questRunnerWindowRect);
             }
 
             if (showWindow && showQuestRunnerWindow && _showChainEditor)
             {
-                if (windowStyle != null)
-                    _chainEditorWindowRect = GUI.Window(9985, _chainEditorWindowRect, DrawChainEditorWindow, "Chain Editor", windowStyle);
-                else
-                    _chainEditorWindowRect = GUI.Window(9985, _chainEditorWindowRect, DrawChainEditorWindow, "Chain Editor");
+                _chainEditorWindowRect = ResizableWindow.DrawScaledWindow(9985, _chainEditorWindowRect, 540f, DrawChainEditorWindow, "Chain Editor", windowStyle);
                 _chainEditorWindowRect = ResizableWindow.HandleResize(9985, _chainEditorWindowRect);
             }
 
             if (showWindow && showFunWindow)
             {
-                if (windowStyle != null)
-                {
-                    funWindowRect = GUI.Window(9989, funWindowRect, DrawFunWindow, "Fun", windowStyle);
-                }
-                else
-                {
-                    funWindowRect = GUI.Window(9989, funWindowRect, DrawFunWindow, "Fun");
-                }
+                funWindowRect = ResizableWindow.DrawScaledWindow(9989, funWindowRect, 360f, DrawFunWindow, "Fun", windowStyle);
                 funWindowRect = ResizableWindow.HandleResize(9989, funWindowRect);
             }
 
             if (showWindow && showExtraFunWindow)
             {
-                if (windowStyle != null)
-                {
-                    extraFunWindowRect = GUI.Window(9987, extraFunWindowRect, DrawExtraFunWindow, "Extra Fun", windowStyle);
-                }
-                else
-                {
-                    extraFunWindowRect = GUI.Window(9987, extraFunWindowRect, DrawExtraFunWindow, "Extra Fun");
-                }
+                extraFunWindowRect = ResizableWindow.DrawScaledWindow(9987, extraFunWindowRect, 360f, DrawExtraFunWindow, "Extra Fun", windowStyle);
                 extraFunWindowRect = ResizableWindow.HandleResize(9987, extraFunWindowRect);
             }
 
             if (showWindow && showRetroTestsWindow)
             {
-                if (windowStyle != null)
-                {
-                    retroTestsWindowRect = GUI.Window(9988, retroTestsWindowRect, DrawRetroTestsWindow, "Retro Tests", windowStyle);
-                }
-                else
-                {
-                    retroTestsWindowRect = GUI.Window(9988, retroTestsWindowRect, DrawRetroTestsWindow, "Retro Tests");
-                }
+                MelonLogger.Msg($"[RetroTests] Drawing Retro Tests window. Rect: {retroTestsWindowRect}");
+                retroTestsWindowRect = ResizableWindow.DrawScaledWindow(9988, retroTestsWindowRect, 320f, DrawRetroTestsWindow, "Retro Tests", windowStyle);
                 retroTestsWindowRect = ResizableWindow.HandleResize(9988, retroTestsWindowRect);
             }
 
             if (showWindow && showSkillsetTestWindow)
             {
-                if (windowStyle != null)
-                {
-                    skillsetTestWindowRect = GUI.Window(9986, skillsetTestWindowRect, DrawSkillsetTestWindow, "Skillset Test", windowStyle);
-                }
-                else
-                {
-                    skillsetTestWindowRect = GUI.Window(9986, skillsetTestWindowRect, DrawSkillsetTestWindow, "Skillset Test");
-                }
+                skillsetTestWindowRect = ResizableWindow.DrawScaledWindow(9986, skillsetTestWindowRect, 320f, DrawSkillsetTestWindow, "Skillset Test", windowStyle);
                 skillsetTestWindowRect = ResizableWindow.HandleResize(9986, skillsetTestWindowRect);
             }
         }
@@ -1018,7 +918,8 @@ namespace Infinity_TestMod
 
         private void DrawWindow(int windowID)
         {
-            float contentWidth = windowRect.width - 40f;  // -20px padding each side
+            Util.ResizableWindow.BeginScaling(windowID, windowRect, 300f);
+            float contentWidth = 300f - 40f;  // -20px padding each side
             GUI.Label(new Rect(20, 35, contentWidth, 25), "Test Mod Implementation", labelStyle);
             int currentLevel = -1;
             try
@@ -1198,6 +1099,7 @@ namespace Infinity_TestMod
             if (GUI.Button(new Rect(20, curY, 260, 35), retroTestsBtnText, closeButtonStyle))
             {
                 showRetroTestsWindow = !showRetroTestsWindow;
+                MelonLogger.Msg($"[RetroTests] Button clicked! showRetroTestsWindow is now: {showRetroTestsWindow}");
             }
             curY += 35f;
 
@@ -1280,7 +1182,8 @@ namespace Infinity_TestMod
             if (!Util.ResizableWindow.WasManuallyResized(9999))
                 windowRect.height = curY + 20f;
 
-            GUI.DragWindow(Util.ResizableWindow.TitleBarDragRect(windowRect.width));
+            GUI.DragWindow(Util.ResizableWindow.TitleBarDragRect(300f));
+            Util.ResizableWindow.EndScaling();
         }
 
         private static string GetSkillKeyName(int slot)
@@ -1291,6 +1194,7 @@ namespace Infinity_TestMod
 
         private void DrawConfigWindow(int windowID)
         {
+            Util.ResizableWindow.BeginScaling(windowID, configWindowRect, 320f);
             GUI.Label(new Rect(20, 35, 280, 20), "Configure Skill Delays & Order", labelStyle);
             GUI.Label(new Rect(20, 60, 90, 20), "Skill", labelStyle);
             GUI.Label(new Rect(115, 60, 65, 20), "Delay (ms)", labelStyle);
@@ -1343,12 +1247,14 @@ namespace Infinity_TestMod
                 showConfigWindow = false;
             }
 
-            GUI.DragWindow(Util.ResizableWindow.TitleBarDragRect(configWindowRect.width));
+            GUI.DragWindow(Util.ResizableWindow.TitleBarDragRect(320f));
+            Util.ResizableWindow.EndScaling();
         }
 
         private void DrawSkillsetTestWindow(int windowID)
         {
-            float winWidth = skillsetTestWindowRect.width;
+            Util.ResizableWindow.BeginScaling(windowID, skillsetTestWindowRect, 320f);
+            float winWidth = 320f;
             float pad = 20f;
             float innerW = winWidth - pad * 2;
 
@@ -1897,11 +1803,13 @@ namespace Infinity_TestMod
             if (!Util.ResizableWindow.WasManuallyResized(9986))
                 skillsetTestWindowRect.height = curY;
             GUI.DragWindow(Util.ResizableWindow.TitleBarDragRect(winWidth));
+            Util.ResizableWindow.EndScaling();
         }
 
         private void DrawRetroTestsWindow(int windowID)
         {
-            float winWidth = retroTestsWindowRect.width;
+            Util.ResizableWindow.BeginScaling(windowID, retroTestsWindowRect, 320f);
+            float winWidth = 320f;
             float pad = 20f;
             float innerW = winWidth - pad * 2;
 
@@ -1928,6 +1836,7 @@ namespace Infinity_TestMod
             if (!Util.ResizableWindow.WasManuallyResized(9988))
                 retroTestsWindowRect.height = curY;
             GUI.DragWindow(Util.ResizableWindow.TitleBarDragRect(winWidth));
+            Util.ResizableWindow.EndScaling();
         }
 
         private static System.Collections.Generic.List<int> ParseCombo(string comboStr)
@@ -2027,7 +1936,8 @@ namespace Infinity_TestMod
 
         private void DrawInterceptorWindow(int windowID)
         {
-            float winWidth = interceptorWindowRect.width;
+            Util.ResizableWindow.BeginScaling(windowID, interceptorWindowRect, 500f);
+            float winWidth = 500f;
             float pad = 20f;
             float innerW = winWidth - pad * 2;
 
@@ -2088,12 +1998,14 @@ namespace Infinity_TestMod
                 showInterceptorWindow = false;
             }
 
-            GUI.DragWindow(Util.ResizableWindow.TitleBarDragRect(interceptorWindowRect.width));
+            GUI.DragWindow(Util.ResizableWindow.TitleBarDragRect(500f));
+            Util.ResizableWindow.EndScaling();
         }
 
         private void DrawSnifferWindow(int windowID)
         {
-            float winWidth = snifferWindowRect.width;
+            Util.ResizableWindow.BeginScaling(windowID, snifferWindowRect, 500f);
+            float winWidth = 500f;
             float pad = 20f;
             float innerW = winWidth - pad * 2;
 
@@ -2219,11 +2131,13 @@ namespace Infinity_TestMod
             }
 
             GUI.DragWindow(Util.ResizableWindow.TitleBarDragRect(winWidth));
+            Util.ResizableWindow.EndScaling();
         }
 
         private void DrawSenderWindow(int windowID)
         {
-            float winWidth = senderWindowRect.width;
+            Util.ResizableWindow.BeginScaling(windowID, senderWindowRect, 500f);
+            float winWidth = 500f;
             float pad = 20f;
             float innerW = winWidth - pad * 2;
 
@@ -2306,12 +2220,14 @@ namespace Infinity_TestMod
                 showSenderWindow = false;
             }
 
-            GUI.DragWindow(Util.ResizableWindow.TitleBarDragRect(senderWindowRect.width));
+            GUI.DragWindow(Util.ResizableWindow.TitleBarDragRect(500f));
+            Util.ResizableWindow.EndScaling();
         }
 
         private void DrawReceiverWindow(int windowID)
         {
-            float winWidth = receiverWindowRect.width;
+            Util.ResizableWindow.BeginScaling(windowID, receiverWindowRect, 500f);
+            float winWidth = 500f;
             float pad = 20f;
             float innerW = winWidth - pad * 2;
 
@@ -2389,6 +2305,7 @@ namespace Infinity_TestMod
             }
 
             GUI.DragWindow(Util.ResizableWindow.TitleBarDragRect(winWidth));
+            Util.ResizableWindow.EndScaling();
         }
 
         public static (bool ok, string info) FakeServerPacket(string json)
@@ -2431,7 +2348,8 @@ namespace Infinity_TestMod
 
         private void DrawFakeDevWindow(int windowID)
         {
-            float winWidth = fakeDevWindowRect.width;
+            Util.ResizableWindow.BeginScaling(windowID, fakeDevWindowRect, 320f);
+            float winWidth = 320f;
             float pad = 20f;
             float innerW = winWidth - pad * 2;
 
@@ -2534,11 +2452,13 @@ namespace Infinity_TestMod
             }
 
             GUI.DragWindow(Util.ResizableWindow.TitleBarDragRect(winWidth));
+            Util.ResizableWindow.EndScaling();
         }
 
         private void DrawFunWindow(int windowID)
         {
-            float winWidth = funWindowRect.width;
+            Util.ResizableWindow.BeginScaling(windowID, funWindowRect, 360f);
+            float winWidth = 360f;
             float pad = 20f;
             float innerW = winWidth - pad * 2;
 
@@ -2634,6 +2554,7 @@ namespace Infinity_TestMod
                 funWindowRect.height = curY + 10f;
 
             GUI.DragWindow(Util.ResizableWindow.TitleBarDragRect(winWidth));
+            Util.ResizableWindow.EndScaling();
         }
 
         // Extra Fun — sibling window for niche spoofs. Currently hosts the
@@ -2641,7 +2562,8 @@ namespace Infinity_TestMod
         // owns its own catalog slot (6 = Monsters bucket).
         private void DrawExtraFunWindow(int windowID)
         {
-            float winWidth = extraFunWindowRect.width;
+            Util.ResizableWindow.BeginScaling(windowID, extraFunWindowRect, 360f);
+            float winWidth = 360f;
             float pad = 20f;
             float innerW = winWidth - pad * 2;
 
@@ -2807,6 +2729,7 @@ namespace Infinity_TestMod
             if (!Util.ResizableWindow.WasManuallyResized(9987))
                 extraFunWindowRect.height = curY + 10f;
             GUI.DragWindow(Util.ResizableWindow.TitleBarDragRect(winWidth));
+            Util.ResizableWindow.EndScaling();
         }
 
         /// <summary>
@@ -3234,7 +3157,8 @@ namespace Infinity_TestMod
 
         private void DrawShopLoaderWindow(int windowID)
         {
-            float winWidth = shopLoaderWindowRect.width;
+            Util.ResizableWindow.BeginScaling(windowID, shopLoaderWindowRect, 280f);
+            float winWidth = 280f;
             float pad = 20f;
             float innerW = winWidth - pad * 2;
 
@@ -3302,12 +3226,14 @@ namespace Infinity_TestMod
                 showShopLoaderWindow = false;
             }
 
-            GUI.DragWindow(Util.ResizableWindow.TitleBarDragRect(winWidth));
+            GUI.DragWindow(Util.ResizableWindow.TitleBarDragRect(280f));
+            Util.ResizableWindow.EndScaling();
         }
 
         private void DrawQuestLoaderWindow(int windowID)
         {
-            float winWidth = questLoaderWindowRect.width;
+            Util.ResizableWindow.BeginScaling(windowID, questLoaderWindowRect, 280f);
+            float winWidth = 280f;
             float pad = 20f;
             float innerW = winWidth - pad * 2;
 
@@ -3373,12 +3299,14 @@ namespace Infinity_TestMod
                 showQuestLoaderWindow = false;
             }
 
-            GUI.DragWindow(Util.ResizableWindow.TitleBarDragRect(winWidth));
+            GUI.DragWindow(Util.ResizableWindow.TitleBarDragRect(280f));
+            Util.ResizableWindow.EndScaling();
         }
 
         private void DrawQuestRunnerWindow(int windowID)
         {
-            float winWidth = questRunnerWindowRect.width;
+            Util.ResizableWindow.BeginScaling(windowID, questRunnerWindowRect, 640f);
+            float winWidth = 640f;
             float pad = 20f;
             float innerW = winWidth - pad * 2;
 
@@ -3644,6 +3572,7 @@ namespace Infinity_TestMod
             }
 
             GUI.DragWindow(Util.ResizableWindow.TitleBarDragRect(winWidth));
+            Util.ResizableWindow.EndScaling();
         }
 
         // ------- Chain Editor logic + GUI (INJECTED) -------
@@ -3688,8 +3617,9 @@ namespace Infinity_TestMod
         private static void DrawChainEditorWindow(int windowID)
         {
             if (_chainEditState == null) return;
+            Util.ResizableWindow.BeginScaling(windowID, _chainEditorWindowRect, 540f);
             float p = 10f;
-            float W = _chainEditorWindowRect.width;
+            float W = 540f;
             float H = _chainEditorWindowRect.height;
             float y = 28f;
 
@@ -3792,6 +3722,7 @@ namespace Infinity_TestMod
             }
 
             GUI.DragWindow(Util.ResizableWindow.TitleBarDragRect(W, 26f));
+            Util.ResizableWindow.EndScaling();
         }
 
         private static void SaveEditedChain(bool saveAs)
