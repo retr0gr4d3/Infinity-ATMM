@@ -52,7 +52,9 @@ namespace Infinity_TestMod
         public static Rect extraFunWindowRect = new(700, 410, 360, 360);
 
         public static bool showRetroTestsWindow = false;
-        public static Rect retroTestsWindowRect = new(330, 350, 320, 640);
+        public static Rect retroTestsWindowRect = new(330, 350, 320, 300);
+        public static bool showSkillsetTestWindow = false;
+        public static Rect skillsetTestWindowRect = new(330, 350, 320, 640);
 
         // Gear Spoof — one entry per visual slot (Helm, Armor, Back/Cape).
         // Each holds the active spoof bundle Filename. Version metadata is
@@ -334,6 +336,14 @@ namespace Infinity_TestMod
         private static GUIStyle textFieldStyle;
         private static GUIStyle logTextStyle;
 
+        public static TestMod activeInstance = null;
+        public static System.Action<string, object[]> reloadedEventReceiver = null;
+
+        public TestMod()
+        {
+            activeInstance = this;
+        }
+
         public override void OnInitializeMelon()
         {
             LoggerInstance.Msg("Alpha Testing Mod Menu Initialized successfully!");
@@ -356,6 +366,12 @@ namespace Infinity_TestMod
 
         public override void OnApplicationQuit()
         {
+            if (reloadedEventReceiver != null)
+            {
+                try { reloadedEventReceiver("OnApplicationQuit", null); }
+                catch (System.Exception ex) { MelonLogger.Error($"[Hot-Reload] OnApplicationQuit exception: {ex}"); }
+                return;
+            }
             Directory.Save();
             ItemCatalog.Save();
             MusicCatalog.Save();
@@ -379,6 +395,12 @@ namespace Infinity_TestMod
 
         public override void OnUpdate()
         {
+            if (reloadedEventReceiver != null)
+            {
+                try { reloadedEventReceiver("OnUpdate", null); }
+                catch (System.Exception ex) { MelonLogger.Error($"[Hot-Reload] OnUpdate exception: {ex}"); }
+                return;
+            }
             // Tick the quest runner every frame. It's a no-op when Idle/Done/Failed.
             try { questRunner?.Tick(); } catch (System.Exception ex) { LoggerInstance.Error($"QuestRunner tick: {ex.Message}"); }
 
@@ -674,6 +696,12 @@ namespace Infinity_TestMod
 
         public override void OnGUI()
         {
+            if (reloadedEventReceiver != null)
+            {
+                try { reloadedEventReceiver("OnGUI", null); }
+                catch (System.Exception ex) { MelonLogger.Error($"[Hot-Reload] OnGUI exception: {ex}"); }
+                return;
+            }
             if (buttonTexture != null && buttonHoverTexture != null && buttonStyle == null)
             {
                 buttonStyle = new GUIStyle();
@@ -958,6 +986,19 @@ namespace Infinity_TestMod
                 }
                 retroTestsWindowRect = ResizableWindow.HandleResize(9988, retroTestsWindowRect);
             }
+
+            if (showWindow && showSkillsetTestWindow)
+            {
+                if (windowStyle != null)
+                {
+                    skillsetTestWindowRect = GUI.Window(9986, skillsetTestWindowRect, DrawSkillsetTestWindow, "Skillset Test", windowStyle);
+                }
+                else
+                {
+                    skillsetTestWindowRect = GUI.Window(9986, skillsetTestWindowRect, DrawSkillsetTestWindow, "Skillset Test");
+                }
+                skillsetTestWindowRect = ResizableWindow.HandleResize(9986, skillsetTestWindowRect);
+            }
         }
 
         private float DrawSeparator(float y)
@@ -1214,6 +1255,12 @@ namespace Infinity_TestMod
             }
             curY += 35f + 10f;
 
+            if (GUI.Button(new Rect(20, curY, 260, 35), "Hot-Reload DLL", closeButtonStyle))
+            {
+                DoHotReload();
+            }
+            curY += 40f;
+
             if (closeButtonStyle != null)
             {
                 if (GUI.Button(new Rect(20, curY, 260, 35), "Close", closeButtonStyle))
@@ -1299,9 +1346,9 @@ namespace Infinity_TestMod
             GUI.DragWindow(Util.ResizableWindow.TitleBarDragRect(configWindowRect.width));
         }
 
-        private void DrawRetroTestsWindow(int windowID)
+        private void DrawSkillsetTestWindow(int windowID)
         {
-            float winWidth = retroTestsWindowRect.width;
+            float winWidth = skillsetTestWindowRect.width;
             float pad = 20f;
             float innerW = winWidth - pad * 2;
 
@@ -1842,6 +1889,37 @@ namespace Infinity_TestMod
             curY += 10f;
 
             if (GUI.Button(new Rect(pad, curY, innerW, 35), "Close Window", closeButtonStyle))
+            {
+                showSkillsetTestWindow = false;
+            }
+            curY += 45f;
+
+            if (!Util.ResizableWindow.WasManuallyResized(9986))
+                skillsetTestWindowRect.height = curY;
+            GUI.DragWindow(Util.ResizableWindow.TitleBarDragRect(winWidth));
+        }
+
+        private void DrawRetroTestsWindow(int windowID)
+        {
+            float winWidth = retroTestsWindowRect.width;
+            float pad = 20f;
+            float innerW = winWidth - pad * 2;
+
+            float curY = 35f;
+
+            GUI.Label(new Rect(pad, curY, innerW, 20), "<b>Select a Test:</b>", labelStyle);
+            curY += 25f;
+
+            string skillsetBtnText = showSkillsetTestWindow ? "Hide Skillset Test" : "Skillset Test";
+            if (GUI.Button(new Rect(pad, curY, innerW, 35), skillsetBtnText, closeButtonStyle))
+            {
+                showSkillsetTestWindow = !showSkillsetTestWindow;
+            }
+            curY += 45f;
+
+
+
+            if (GUI.Button(new Rect(pad, curY, innerW, 35), "Close", closeButtonStyle))
             {
                 showRetroTestsWindow = false;
             }
@@ -3968,6 +4046,11 @@ namespace Infinity_TestMod
                 return true;
             }
 
+            if (showWindow && showSkillsetTestWindow && skillsetTestWindowRect.Contains(imguiMousePos))
+            {
+                return true;
+            }
+
             return false;
         }
 
@@ -4228,6 +4311,207 @@ namespace Infinity_TestMod
             }
             catch { }
             return false;
+        }
+
+        public static void DoHotReload()
+        {
+            try
+            {
+                MelonLogger.Msg("[Hot-Reload] Starting reload...");
+                
+                string dllPath = @"c:\Users\retro\Documents\GitHub\Infinity_TestMod\Infinity-Beyond\bin\Release\Beyond_0.0.4_Alpha-0.0.236.dll";
+                if (!System.IO.File.Exists(dllPath))
+                {
+                    dllPath = @"c:\Users\retro\Documents\GitHub\Infinity_TestMod\build\Beyond_0.0.4_Alpha-0.0.236.dll";
+                }
+                
+                if (!System.IO.File.Exists(dllPath))
+                {
+                    MelonLogger.Error($"[Hot-Reload] Could not find compiled DLL at {dllPath}");
+                    return;
+                }
+
+                // Call OnApplicationQuit on the current assembly/activeInstance to clean up resources (files, logs, etc.)
+                if (activeInstance != null)
+                {
+                    MelonLogger.Msg("[Hot-Reload] Cleaning up resources in active instance...");
+                    try { activeInstance.OnApplicationQuit(); } catch { }
+                }
+
+                MelonLogger.Msg($"[Hot-Reload] Reading bytes from {dllPath}...");
+                byte[] assemblyBytes = System.IO.File.ReadAllBytes(dllPath);
+                
+                MelonLogger.Msg("[Hot-Reload] Loading assembly...");
+                System.Reflection.Assembly newAssembly = System.Reflection.Assembly.Load(assemblyBytes);
+                
+                System.Type testModType = newAssembly.GetType("Infinity_TestMod.TestMod");
+                if (testModType == null)
+                {
+                    MelonLogger.Error("[Hot-Reload] Could not find type Infinity_TestMod.TestMod in new assembly");
+                    return;
+                }
+
+                // Create the new instance
+                object newInstance = System.Activator.CreateInstance(testModType);
+
+                // Copy base MelonLoader fields (like LoggerInstance, Info, etc.)
+                CopyBaseMelonFields(activeInstance, newInstance);
+
+                // Transfer state from this instance to the new instance
+                TransferStateTo(newInstance);
+
+                // Unpatch the old assembly's Harmony patches
+                MelonLogger.Msg("[Hot-Reload] Unpatching old Harmony...");
+                var harmonyInstance = new HarmonyLib.Harmony(nameof(TestMod));
+                harmonyInstance.UnpatchSelf();
+
+                // Call OnInitializeMelon on the new instance to initialize catalogs and apply new patches
+                MelonLogger.Msg("[Hot-Reload] Initializing new assembly...");
+                System.Reflection.MethodInfo initMethod = testModType.GetMethod("OnInitializeMelon", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                if (initMethod != null)
+                {
+                    initMethod.Invoke(newInstance, null);
+                }
+
+                // Create the event receiver delegate
+                System.Reflection.MethodInfo receiveEventMethod = testModType.GetMethod("ReceiveEvent", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                if (receiveEventMethod == null)
+                {
+                    MelonLogger.Error("[Hot-Reload] Could not find ReceiveEvent method in new assembly");
+                    return;
+                }
+
+                System.Action<string, object[]> receiverDelegate = (System.Action<string, object[]>)System.Delegate.CreateDelegate(typeof(System.Action<string, object[]>), receiveEventMethod);
+
+                // Set the static receiver on the original assembly's TestMod class.
+                System.Type originalTestModType = GetOriginalTestModType();
+                if (originalTestModType != null)
+                {
+                    System.Reflection.FieldInfo receiverField = originalTestModType.GetField("reloadedEventReceiver", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                    if (receiverField != null)
+                    {
+                        receiverField.SetValue(null, receiverDelegate);
+                        MelonLogger.Msg("[Hot-Reload] Event receiver delegate set successfully.");
+                    }
+                    else
+                    {
+                        MelonLogger.Error("[Hot-Reload] Could not find reloadedEventReceiver field in original type");
+                    }
+                }
+                else
+                {
+                    reloadedEventReceiver = receiverDelegate;
+                }
+
+                MelonLogger.Msg("[Hot-Reload] Reload completed successfully!");
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Error($"[Hot-Reload] Error reloading: {ex}");
+            }
+        }
+
+        private static System.Type GetOriginalTestModType()
+        {
+            foreach (System.Reflection.Assembly asm in System.AppDomain.CurrentDomain.GetAssemblies())
+            {
+                if (!asm.IsDynamic && asm.GetName().Name == "Beyond_0.0.4_Alpha-0.0.236")
+                {
+                    return asm.GetType("Infinity_TestMod.TestMod");
+                }
+            }
+            return null;
+        }
+
+        private static void TransferStateTo(object newInstance)
+        {
+            try
+            {
+                System.Type newType = newInstance.GetType();
+                System.Reflection.FieldInfo[] fields = typeof(TestMod).GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+                foreach (System.Reflection.FieldInfo field in fields)
+                {
+                    if (field.Name == nameof(reloadedEventReceiver) ||
+                        field.Name == nameof(activeInstance) ||
+                        field.FieldType == typeof(UnityEngine.Texture2D) ||
+                        field.FieldType == typeof(UnityEngine.GUIStyle) ||
+                        field.IsLiteral ||
+                        field.IsInitOnly)
+                    {
+                        continue;
+                    }
+
+                    System.Reflection.FieldInfo newField = newType.GetField(field.Name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+                    if (newField != null && !newField.IsLiteral && !newField.IsInitOnly)
+                    {
+                        try
+                        {
+                            newField.SetValue(null, field.GetValue(null));
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Error($"[Hot-Reload] Error transferring state: {ex}");
+            }
+        }
+
+        private static void CopyBaseMelonFields(object oldInstance, object newInstance)
+        {
+            try
+            {
+                if (oldInstance == null || newInstance == null) return;
+                
+                System.Type type = typeof(MelonMod).BaseType; // Start from MelonBase
+                while (type != null && type != typeof(object))
+                {
+                    System.Reflection.FieldInfo[] fields = type.GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+                    foreach (var field in fields)
+                    {
+                        if (field.IsLiteral || field.IsInitOnly) continue;
+                        try
+                        {
+                            object val = field.GetValue(oldInstance);
+                            if (val != null)
+                            {
+                                field.SetValue(newInstance, val);
+                            }
+                        }
+                        catch { }
+                    }
+                    type = type.BaseType;
+                }
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Error($"[Hot-Reload] Error copying base Melon fields: {ex}");
+            }
+        }
+
+        public static void ReceiveEvent(string eventName, object[] args)
+        {
+            if (activeInstance == null) return;
+            try
+            {
+                if (eventName == "OnUpdate")
+                {
+                    activeInstance.OnUpdate();
+                }
+                else if (eventName == "OnGUI")
+                {
+                    activeInstance.OnGUI();
+                }
+                else if (eventName == "OnApplicationQuit")
+                {
+                    activeInstance.OnApplicationQuit();
+                }
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Error($"[Hot-Reload] Error in ReceiveEvent '{eventName}': {ex}");
+            }
         }
 
         #region Win32 File Dialogs
