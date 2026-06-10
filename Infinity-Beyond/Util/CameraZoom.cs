@@ -43,7 +43,7 @@ namespace Infinity_TestMod.Util
             _fHalfH = typeof(CameraFollow).GetField("camHalfHeight", Flags);
             _fHalfW = typeof(CameraFollow).GetField("camHalfWidth", Flags);
 
-            List<string> missing = new();
+            List<string> missing = [];
             if (_fCam == null) missing.Add("cam");
             if (_fHalfH == null) missing.Add("camHalfHeight");
             if (_fHalfW == null) missing.Add("camHalfWidth");
@@ -60,10 +60,9 @@ namespace Infinity_TestMod.Util
             if (!_fieldsResolved) return;
             try
             {
-                CameraFollow follow = Object.FindObjectOfType<CameraFollow>();
+                CameraFollow follow = Object.FindAnyObjectByType<CameraFollow>();
                 if (follow == null) return;
-                Camera cam = _fCam.GetValue(follow) as Camera;
-                if (cam == null) return;
+                if (_fCam.GetValue(follow) is not Camera cam) return;
 
                 if (follow != _trackedFollow)
                 {
