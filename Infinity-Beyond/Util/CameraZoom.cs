@@ -60,10 +60,9 @@ namespace Infinity_TestMod.Util
             if (!_fieldsResolved) return;
             try
             {
-                CameraFollow follow = Object.FindObjectOfType<CameraFollow>();
+                CameraFollow follow = Object.FindAnyObjectByType<CameraFollow>();
                 if (follow == null) return;
-                Camera cam = _fCam.GetValue(follow) as Camera;
-                if (cam == null) return;
+                if (_fCam.GetValue(follow) is not Camera cam) return;
 
                 if (follow != _trackedFollow)
                 {

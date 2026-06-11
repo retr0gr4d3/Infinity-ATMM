@@ -1,12 +1,10 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 
-:: All paths are relative to this bat file — works on any machine.
 set ROOT=%~dp0
 set SLN=%ROOT%Infinity_TestMod.sln
 set OUT=%ROOT%Infinity-Beyond\bin\Release
 set BUILD=%ROOT%build
-set DLL=Beyond_0.0.5_Alpha-0.0.238.dll
 
 echo ========================================
 echo  Building Infinity-Beyond Mod
@@ -15,29 +13,45 @@ echo.
 
 dotnet build "%SLN%" -c Release
 
-if %ERRORLEVEL% NEQ 0 (
+if errorlevel 1 (
     echo.
-    echo BUILD FAILED. Check errors above.
+    echo BUILD FAILED
+    pause
+    exit /b 1
+)
+
+set "DLL="
+
+for /f "delims=" %%F in ('
+    powershell -NoProfile -ExecutionPolicy Bypass ^
+    -Command "param($p) Get-ChildItem -LiteralPath $p -Filter 'Beyond_*.dll' -ErrorAction SilentlyContinue ^
+              | Sort-Object LastWriteTime -Descending ^
+              | Select-Object -First 1 -ExpandProperty Name" ^
+    -ArgumentList "%OUT%"
+') do (
+    set "DLL=%%F"
+)
+
+if not defined DLL (
+    echo ERROR: No DLL found in output folder
+    echo %OUT%
+    pause
+    exit /b 1
+)
+
+if not exist "%BUILD%" mkdir "%BUILD%"
+
+copy /Y "%OUT%\!DLL!" "%BUILD%\" >nul
+
+if errorlevel 1 (
+    echo ERROR: Copy failed
     pause
     exit /b 1
 )
 
 echo.
-if exist "%OUT%\%DLL%" (
-    echo Build succeeded!
-    if not exist "%BUILD%" mkdir "%BUILD%"
-    copy /Y "%OUT%\%DLL%" "%BUILD%\"
-    echo.
-    echo DLL ready at:
-    echo %BUILD%\%DLL%
-    echo.
-    echo Closing in 3 seconds...
-    timeout /t 3 /nobreak
-    exit /b 0
-) else (
-    echo WARNING: Build OK but DLL not found at:
-    echo %OUT%\%DLL%
-)
-
+echo Build complete.
+echo Output: %BUILD%\!DLL!
 echo.
-pause
+timeout /t 2 >nul
+exit /b 0
